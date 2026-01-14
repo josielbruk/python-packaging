@@ -145,11 +145,8 @@ jobs:
           set SCRIPT_DIR=%~dp0
           cd /d "%SCRIPT_DIR%"
 
-          REM Activate virtual environment
-          call .venv\Scripts\activate.bat
-
-          REM Run the application
-          python -m src.main
+          REM Run the application using virtual environment Python
+          "%SCRIPT_DIR%.venv\Scripts\python.exe" -m src
 
           REM Keep window open on error
           if errorlevel 1 pause
