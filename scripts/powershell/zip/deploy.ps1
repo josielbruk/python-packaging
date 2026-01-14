@@ -167,24 +167,83 @@ if (Test-Path $venvPath) {
     Write-Host "Removed build machine virtual environment" -ForegroundColor Yellow
 }
 
-# Find Python on the target machine
+# Find Python on the target machine (supports both system and user installations)
 $pythonExe = $null
-$pythonPaths = @(
-    "C:\Python314\python.exe",
-    "C:\Program Files\Python314\python.exe",
-    "C:\Python3\python.exe"
-)
+$pythonPaths = @()
 
-# Check system PATH for Python
+Write-Host "Searching for Python 3.14..." -ForegroundColor Gray
+
+# Strategy 1: Check PATH environment variable (works for both system and user contexts)
 $pythonCmd = Get-Command python.exe -ErrorAction SilentlyContinue
 if ($pythonCmd) {
     $pythonPaths += $pythonCmd.Source
+    Write-Host "  Found in PATH: $($pythonCmd.Source)" -ForegroundColor Gray
 }
 
+# Strategy 2: Check common system-wide installation paths
+$systemPaths = @(
+    "C:\Python314\python.exe",
+    "C:\Program Files\Python314\python.exe",
+    "C:\Program Files (x86)\Python314\python.exe",
+    "C:\Python3\python.exe"
+)
+foreach ($path in $systemPaths) {
+    if (Test-Path $path) {
+        $pythonPaths += $path
+        Write-Host "  Found system installation: $path" -ForegroundColor Gray
+    }
+}
+
+# Strategy 3: Check user-specific installations (AppData)
+try {
+    $userPythonPaths = Get-ChildItem -Path "C:\Users\*\AppData\Local\Programs\Python\Python3*\python.exe" -ErrorAction SilentlyContinue
+    if ($userPythonPaths) {
+        foreach ($userPath in $userPythonPaths) {
+            $pythonPaths += $userPath.FullName
+            Write-Host "  Found user installation: $($userPath.FullName)" -ForegroundColor Gray
+        }
+    }
+} catch {
+    # Ignore errors searching user paths
+}
+
+# Strategy 4: Check Windows Registry for Python installations
+try {
+    $regPaths = @(
+        "HKLM:\SOFTWARE\Python\PythonCore\3.14\InstallPath",
+        "HKLM:\SOFTWARE\Python\PythonCore\3.14-64\InstallPath",
+        "HKCU:\SOFTWARE\Python\PythonCore\3.14\InstallPath",
+        "HKCU:\SOFTWARE\Python\PythonCore\3.14-64\InstallPath"
+    )
+    foreach ($regPath in $regPaths) {
+        if (Test-Path $regPath) {
+            $installPath = (Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue).'(default)'
+            if ($installPath) {
+                $regPythonExe = Join-Path $installPath "python.exe"
+                if (Test-Path $regPythonExe) {
+                    $pythonPaths += $regPythonExe
+                    Write-Host "  Found via registry: $regPythonExe" -ForegroundColor Gray
+                }
+            }
+        }
+    }
+} catch {
+    # Ignore registry errors
+}
+
+# Select first valid Python installation
 foreach ($path in $pythonPaths) {
     if ($path -and (Test-Path $path)) {
-        $pythonExe = $path
-        break
+        # Verify it's Python 3.14+ by checking version
+        try {
+            $versionOutput = & $path --version 2>&1
+            if ($versionOutput -match "Python 3\.1[4-9]" -or $versionOutput -match "Python 3\.[2-9][0-9]") {
+                $pythonExe = $path
+                break
+            }
+        } catch {
+            # Skip invalid Python installations
+        }
     }
 }
 
