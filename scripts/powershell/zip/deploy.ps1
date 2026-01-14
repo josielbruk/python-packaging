@@ -155,8 +155,59 @@ if (Test-Path $currentJunction) {
 New-Item -ItemType Junction -Path $currentJunction -Target $versionDir -Force | Out-Null
 Write-Host "Current junction updated to: $version" -ForegroundColor Green
 
-# Step 5: Verify deployment
-Write-Host "`nStep 5: Verifying deployment..." -ForegroundColor Yellow
+# Step 5: Rebuild virtual environment for target machine
+Write-Host "`nStep 5: Rebuilding virtual environment..." -ForegroundColor Yellow
+
+$venvPath = Join-Path $currentJunction ".venv"
+$requirementsFile = Join-Path $currentJunction "src\requirements.txt"
+
+# Remove the build machine's virtual environment
+if (Test-Path $venvPath) {
+    Remove-Item -Path $venvPath -Recurse -Force
+    Write-Host "Removed build machine virtual environment" -ForegroundColor Yellow
+}
+
+# Find Python on the target machine
+$pythonExe = $null
+$pythonPaths = @(
+    "C:\Python314\python.exe",
+    "C:\Program Files\Python314\python.exe",
+    "C:\Python3\python.exe",
+    (Get-Command python.exe -ErrorAction SilentlyContinue).Source
+)
+
+foreach ($path in $pythonPaths) {
+    if ($path -and (Test-Path $path)) {
+        $pythonExe = $path
+        break
+    }
+}
+
+if (-not $pythonExe) {
+    Write-Error "Python 3.14 not found on target machine. Please install Python 3.14 first."
+    exit 1
+}
+
+Write-Host "Found Python at: $pythonExe" -ForegroundColor Green
+
+# Create new virtual environment on target machine
+& $pythonExe -m venv $venvPath
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to create virtual environment"
+    exit 1
+}
+
+Write-Host "Virtual environment created" -ForegroundColor Green
+
+# Install dependencies
+$venvPython = Join-Path $venvPath "Scripts\python.exe"
+& $venvPython -m pip install --upgrade pip --quiet
+& $venvPython -m pip install -r $requirementsFile --quiet
+
+Write-Host "Dependencies installed" -ForegroundColor Green
+
+# Step 6: Verify deployment
+Write-Host "`nStep 6: Verifying deployment..." -ForegroundColor Yellow
 
 $appScript = Join-Path $currentJunction "src\mock_service.py"
 if (Test-Path $appScript) {
@@ -166,8 +217,8 @@ if (Test-Path $appScript) {
     exit 1
 }
 
-# Step 6: Locate or Install NSSM (Non-Sucking Service Manager)
-Write-Host "`nStep 6: Locating NSSM..." -ForegroundColor Yellow
+# Step 7: Locate or Install NSSM (Non-Sucking Service Manager)
+Write-Host "`nStep 7: Locating NSSM..." -ForegroundColor Yellow
 
 # First, check if NSSM is available in PATH (system-wide installation)
 $nssmExe = $null
@@ -212,8 +263,8 @@ if (-not $nssmExe) {
     }
 }
 
-# Step 7: Configure logging
-Write-Host "`nStep 7: Configuring logging..." -ForegroundColor Yellow
+# Step 8: Configure logging
+Write-Host "`nStep 8: Configuring logging..." -ForegroundColor Yellow
 
 $logsDir = Join-Path $BaseInstallPath "logs"
 if (-not (Test-Path $logsDir)) {
@@ -225,8 +276,8 @@ $errorLogFile = Join-Path $logsDir "$ServiceName-error-$(Get-Date -Format 'yyyy-
 
 Write-Host "Log directory: $logsDir" -ForegroundColor Green
 
-# Step 8: Install/Update Windows Service using NSSM
-Write-Host "`nStep 8: Configuring Windows Service..." -ForegroundColor Yellow
+# Step 9: Install/Update Windows Service using NSSM
+Write-Host "`nStep 9: Configuring Windows Service..." -ForegroundColor Yellow
 
 $startScript = Join-Path $currentJunction "start-service.bat"
 
@@ -278,8 +329,8 @@ if ($existingService) {
     Write-Host "Service created successfully" -ForegroundColor Green
 }
 
-# Step 9: Start the service
-Write-Host "`nStep 9: Starting service..." -ForegroundColor Yellow
+# Step 10: Start the service
+Write-Host "`nStep 10: Starting service..." -ForegroundColor Yellow
 
 & $nssmExe start $ServiceName
 Start-Sleep -Seconds 3
