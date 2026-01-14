@@ -130,8 +130,11 @@ $previousJunction = Join-Path $BaseInstallPath "previous"
 
 # If current junction exists, preserve it as previous
 if (Test-Path $currentJunction) {
-    # Get the current target
+    # Get the current target (Target returns an array, take first element)
     $currentTarget = (Get-Item $currentJunction).Target
+    if ($currentTarget -is [array]) {
+        $currentTarget = $currentTarget[0]
+    }
 
     # Remove previous junction if exists
     if (Test-Path $previousJunction) {
