@@ -498,12 +498,12 @@ if ($existingService) {
     & $nssmExe set $ServiceName AppRotateBytes 10485760  # 10MB
 
     Write-Host "Service configuration updated" -ForegroundColor Green
-    
+
     # Restart the service with updated configuration
     Write-Host "Restarting service with new configuration..." -ForegroundColor Yellow
     & $nssmExe start $ServiceName
     Start-Sleep -Seconds 3
-    
+
     $restartedService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if ($restartedService -and $restartedService.Status -eq 'Running') {
         Write-Host "Service restarted successfully" -ForegroundColor Green
