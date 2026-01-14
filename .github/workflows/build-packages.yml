@@ -356,8 +356,7 @@ jobs:
               --machine-name "hospital-gateway-01" \
               --name "Deploy-${{ needs.build-zip.outputs.version }}" \
               --script-uri "https://raw.githubusercontent.com/YOUR_ORG/YOUR_REPO/main/scripts/powershell/zip/deploy.ps1" \
-              --parameters version=${{ needs.build-zip.outputs.version }} \
-                           packageUrl=https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${{ needs.build-zip.outputs.zip_artifact }}
+              --parameters '[{"name":"version","value":"${{ needs.build-zip.outputs.version }}"}, {"name":"packageUrl","value":"https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${{ needs.build-zip.outputs.zip_artifact }}"}]'
             ```
 
             ### 📊 Performance Metrics

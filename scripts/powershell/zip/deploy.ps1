@@ -9,8 +9,14 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
+    [Parameter()]
     [string]$ZipPath,
+
+    [Parameter()]
+    [string]$PackageUrl,
+
+    [Parameter()]
+    [string]$Version,
 
     [Parameter()]
     [string]$BaseInstallPath = "C:\Apps\DicomGatewayMock",
@@ -28,6 +34,26 @@ $deployStart = Get-Date
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Deploying ZIP Package (Blue/Green)" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
+
+# Download ZIP if PackageUrl is provided
+if ($PackageUrl) {
+    Write-Host "Downloading package from: $PackageUrl" -ForegroundColor Yellow
+    $tempDir = Join-Path $env:TEMP "dicom-gateway-deploy"
+    if (-not (Test-Path $tempDir)) {
+        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+    }
+    
+    $ZipPath = Join-Path $tempDir "package.zip"
+    
+    try {
+        Invoke-WebRequest -Uri $PackageUrl -OutFile $ZipPath -UseBasicParsing
+        Write-Host "Package downloaded successfully" -ForegroundColor Green
+    } catch {
+        Write-Error "Failed to download package: $_"
+        exit 1
+    }
+}
+
 Write-Host "ZIP Path: $ZipPath"
 Write-Host "Base Install Path: $BaseInstallPath"
 Write-Host ""
@@ -66,15 +92,19 @@ if (-not (Test-Path $sharedDir)) {
 
 Write-Host "Directory structure ready" -ForegroundColor Green
 
-# Step 3: Extract version from ZIP filename
+# Step 3: Extract version from ZIP filename or use provided version
 Write-Host "`nStep 3: Extracting package..." -ForegroundColor Yellow
 
-# Extract version from filename (e.g., DicomGatewayMock-1.0.0.zip)
-$zipFileName = [System.IO.Path]::GetFileNameWithoutExtension($ZipPath)
-if ($zipFileName -match '-(\d+\.\d+\.\d+)$') {
-    $version = $matches[1]
+# Use provided version or extract from filename (e.g., DicomGatewayMock-1.0.0.zip)
+if (-not $Version) {
+    $zipFileName = [System.IO.Path]::GetFileNameWithoutExtension($ZipPath)
+    if ($zipFileName -match '-(\d+\.\d+\.\d+)$') {
+        $version = $matches[1]
+    } else {
+        $version = "1.0.0"
+    }
 } else {
-    $version = "1.0.0"
+    $version = $Version
 }
 
 Write-Host "Detected version: $version" -ForegroundColor Green
