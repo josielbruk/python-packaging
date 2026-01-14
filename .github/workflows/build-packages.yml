@@ -63,7 +63,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ steps.get_python_version.outputs.python_version }}
 
       - name: Install uv
         shell: pwsh
@@ -169,11 +169,36 @@ jobs:
   build-msi:
     name: Build MSI Package
     runs-on: windows-latest
-    needs: build-zip
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Extract Python version from pyproject.toml
+        id: get_python_version
+        shell: pwsh
+        run: |
+          $content = Get-Content pyproject.toml -Raw
+          if ($content -match 'requires-python\s*=\s*">=([0-9.]+)') {
+            $version = $matches[1]
+            Write-Host "Extracted Python version: $version"
+            echo "python_version=$version" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "Could not find Python version, using default 3.12"
+            echo "python_version=3.12" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Get version from tag or input
+        id: get_version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ github.event.inputs.version }}"
+          } else {
+            $version = "${{ github.ref_name }}" -replace '^v', ''
+          }
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "Version: $version"
 
       - name: Install WiX Toolset
         shell: pwsh
@@ -197,13 +222,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ needs.build-zip.outputs.python_version }}
+          python-version: ${{ steps.get_python_version.outputs.python_version }}
 
       - name: Build MSI
         shell: pwsh
         working-directory: scripts/powershell/msi
         run: |
-          $version = "${{ needs.build-zip.outputs.version }}"
+          $version = "${{ steps.get_version.outputs.version }}"
           Write-Host "Building MSI package version $version..."
 
           .\build.ps1 -Version $version -OutputDir ".\output"
@@ -221,16 +246,41 @@ jobs:
   build-exe:
     name: Build EXE Package
     runs-on: windows-latest
-    needs: build-zip
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Extract Python version from pyproject.toml
+        id: get_python_version
+        shell: pwsh
+        run: |
+          $content = Get-Content pyproject.toml -Raw
+          if ($content -match 'requires-python\s*=\s*">=([0-9.]+)') {
+            $version = $matches[1]
+            Write-Host "Extracted Python version: $version"
+            echo "python_version=$version" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "Could not find Python version, using default 3.12"
+            echo "python_version=3.12" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Get version from tag or input
+        id: get_version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ github.event.inputs.version }}"
+          } else {
+            $version = "${{ github.ref_name }}" -replace '^v', ''
+          }
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "Version: $version"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ needs.build-zip.outputs.python_version }}
+          python-version: ${{ steps.get_python_version.outputs.python_version }}
 
       - name: Install PyInstaller
         shell: pwsh
@@ -243,7 +293,7 @@ jobs:
         shell: pwsh
         working-directory: scripts/powershell/exe
         run: |
-          $version = "${{ needs.build-zip.outputs.version }}"
+          $version = "${{ steps.get_version.outputs.version }}"
           Write-Host "Building EXE package version $version..."
 
           .\build.ps1 -Version $version -OutputDir ".\dist"
