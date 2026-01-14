@@ -48,14 +48,19 @@ jobs:
             echo "python_version=3.12" >> $env:GITHUB_OUTPUT
           }
 
-      - name: Get version from tag or input
+      - name: Get version from tag, input, or commit
         id: get_version
         shell: pwsh
         run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ github.event.inputs.version }}" -ne "") {
+            # Use manual input version
             $version = "${{ github.event.inputs.version }}"
-          } else {
+          } elseif ("${{ github.ref_type }}" -eq "tag") {
+            # Use tag version (strip 'v' prefix)
             $version = "${{ github.ref_name }}" -replace '^v', ''
+          } else {
+            # Use short commit SHA
+            $version = "${{ github.sha }}".Substring(0, 7)
           }
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "Version: $version"
@@ -188,14 +193,19 @@ jobs:
             echo "python_version=3.12" >> $env:GITHUB_OUTPUT
           }
 
-      - name: Get version from tag or input
+      - name: Get version from tag, input, or commit
         id: get_version
         shell: pwsh
         run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ github.event.inputs.version }}" -ne "") {
+            # Use manual input version
             $version = "${{ github.event.inputs.version }}"
-          } else {
+          } elseif ("${{ github.ref_type }}" -eq "tag") {
+            # Use tag version (strip 'v' prefix)
             $version = "${{ github.ref_name }}" -replace '^v', ''
+          } else {
+            # Use short commit SHA
+            $version = "${{ github.sha }}".Substring(0, 7)
           }
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "Version: $version"
@@ -265,14 +275,19 @@ jobs:
             echo "python_version=3.12" >> $env:GITHUB_OUTPUT
           }
 
-      - name: Get version from tag or input
+      - name: Get version from tag, input, or commit
         id: get_version
         shell: pwsh
         run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ github.event.inputs.version }}" -ne "") {
+            # Use manual input version
             $version = "${{ github.event.inputs.version }}"
-          } else {
+          } elseif ("${{ github.ref_type }}" -eq "tag") {
+            # Use tag version (strip 'v' prefix)
             $version = "${{ github.ref_name }}" -replace '^v', ''
+          } else {
+            # Use short commit SHA
+            $version = "${{ github.sha }}".Substring(0, 7)
           }
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "Version: $version"
