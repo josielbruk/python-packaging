@@ -122,12 +122,12 @@ def apply_migration_v3(conn):
     """)
 
     conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_deployment_version 
+        CREATE INDEX IF NOT EXISTS idx_deployment_version
         ON deployment_history(version)
     """)
 
     conn.execute("""
-        CREATE INDEX IF NOT EXISTS idx_deployment_date 
+        CREATE INDEX IF NOT EXISTS idx_deployment_date
         ON deployment_history(deployed_at)
     """)
 

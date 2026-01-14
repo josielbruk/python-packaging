@@ -44,7 +44,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
             # Add deployment history from database
             try:
-                from db import get_deployment_history
+                from .db import get_deployment_history
                 deployments = get_deployment_history(limit=5)
                 response['deployment_history'] = [
                     {
