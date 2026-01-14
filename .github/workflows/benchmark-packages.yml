@@ -1,0 +1,150 @@
+name: Benchmark Packaging Strategies
+
+on:
+  workflow_dispatch:  # Manual trigger only
+    inputs:
+      iterations:
+        description: 'Number of benchmark iterations'
+        type: number
+        default: 3
+      strategies:
+        description: 'Strategies to test (All, ZIP, MSI, EXE)'
+        type: choice
+        options:
+          - All
+          - ZIP
+          - EXE
+          - MSI
+        default: 'All'
+
+jobs:
+  benchmark:
+    name: Run Performance Benchmark
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract Python version from pyproject.toml
+        id: get_python_version
+        shell: pwsh
+        run: |
+          $content = Get-Content pyproject.toml -Raw
+          if ($content -match 'requires-python\s*=\s*">=([0-9.]+)') {
+            $version = $matches[1]
+            Write-Host "Extracted Python version: $version"
+            echo "python_version=$version" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "Could not find Python version, using default 3.12"
+            echo "python_version=3.12" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ steps.get_python_version.outputs.python_version }}
+
+      - name: Install prerequisites
+        shell: pwsh
+        run: |
+          Write-Host "Installing prerequisites..."
+
+          # Install uv
+          pip install uv
+
+          # Install PyInstaller for EXE benchmarks
+          pip install pyinstaller
+
+          # Download WiX Toolset for MSI benchmarks
+          if ("${{ github.event.inputs.strategies }}" -eq "All" -or "${{ github.event.inputs.strategies }}" -eq "MSI") {
+            Write-Host "Installing WiX Toolset..."
+            $wixUrl = "https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip"
+            $wixZip = "wix-binaries.zip"
+            $wixDir = "$env:TEMP\wix"
+
+            Invoke-WebRequest -Uri $wixUrl -OutFile $wixZip
+            Expand-Archive -Path $wixZip -DestinationPath $wixDir -Force
+
+            # Add to PATH
+            $env:PATH = "$wixDir;$env:PATH"
+            echo "$wixDir" >> $env:GITHUB_PATH
+
+            Write-Host "WiX Toolset installed"
+          }
+
+      - name: Run benchmark suite
+        shell: pwsh
+        working-directory: scripts/powershell/benchmark
+        run: |
+          $strategies = "${{ github.event.inputs.strategies }}"
+          $iterations = ${{ github.event.inputs.iterations }}
+
+          Write-Host "Running benchmark with:"
+          Write-Host "  Strategies: $strategies"
+          Write-Host "  Iterations: $iterations"
+
+          .\run-benchmark.ps1 -Strategies $strategies -Iterations $iterations -OutputPath ".\results\benchmark-report.json"
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_number }}
+          path: |
+            scripts/powershell/benchmark/results/*.json
+          retention-days: 90
+
+      - name: Generate benchmark summary
+        shell: pwsh
+        run: |
+          $reportPath = "scripts/powershell/benchmark/results/benchmark-report.json"
+
+          if (Test-Path $reportPath) {
+            $report = Get-Content $reportPath | ConvertFrom-Json
+
+            Write-Host ""
+            Write-Host "================================================" -ForegroundColor Cyan
+            Write-Host "Benchmark Summary" -ForegroundColor Cyan
+            Write-Host "================================================" -ForegroundColor Cyan
+            Write-Host ""
+            Write-Host "Timestamp: $($report.timestamp)"
+            Write-Host "Iterations: $($report.iterations)"
+            Write-Host ""
+
+            foreach ($strategy in $report.strategies) {
+              Write-Host "Strategy: $($strategy.name)" -ForegroundColor Yellow
+              Write-Host "  Build Time (mean):      $($strategy.build.mean)s"
+              Write-Host "  Deployment Time (mean): $($strategy.deploy.mean)s"
+              Write-Host "  Rollback Time (mean):   $($strategy.rollback.mean)s"
+              Write-Host "  Artifact Size:          $($strategy.artifactSize.mean) MB"
+              Write-Host ""
+            }
+
+            # Find winners
+            $fastestDeploy = ($report.strategies | Sort-Object { $_.deploy.mean } | Select-Object -First 1)
+            $fastestRollback = ($report.strategies | Sort-Object { $_.rollback.mean } | Select-Object -First 1)
+
+            Write-Host "🏆 Fastest Deployment: $($fastestDeploy.name) ($($fastestDeploy.deploy.mean)s)" -ForegroundColor Green
+            Write-Host "🏆 Fastest Rollback: $($fastestRollback.name) ($($fastestRollback.rollback.mean)s)" -ForegroundColor Green
+          } else {
+            Write-Host "Benchmark report not found" -ForegroundColor Red
+          }
+
+      - name: Create benchmark comment
+        shell: bash
+        run: |
+          echo "### 📊 Benchmark Results" > benchmark-summary.md
+          echo "" >> benchmark-summary.md
+          echo "**Strategies:** ${{ github.event.inputs.strategies }}" >> benchmark-summary.md
+          echo "**Iterations:** ${{ github.event.inputs.iterations }}" >> benchmark-summary.md
+          echo "**Run:** [${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> benchmark-summary.md
+          echo "" >> benchmark-summary.md
+          echo "See artifacts for detailed results." >> benchmark-summary.md
+
+      - name: Upload summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-summary
+          path: benchmark-summary.md
+          retention-days: 90

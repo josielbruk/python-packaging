@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="DICOM Gateway Mock"
+           Language="1033"
+           Version="1.0.0"
+           Manufacturer="NHS Digital"
+           UpgradeCode="12345678-1234-1234-1234-123456789012">
+
+    <Package InstallerVersion="200"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Description="DICOM Gateway Mock Service for Performance Testing"/>
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Installation Directory Structure -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="DicomGatewayMock">
+          <Directory Id="AppFolder" Name="app" />
+          <Directory Id="ConfigFolder" Name="config" />
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <!-- Feature Definition -->
+    <Feature Id="ProductFeature" Title="DICOM Gateway Mock" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+
+    <!-- Component Group -->
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="MainExecutable" Guid="*">
+        <File Id="MockServicePy" Source="..\common\mock_service.py" KeyPath="yes" />
+      </Component>
+      <Component Id="ConfigFile" Guid="*">
+        <File Id="ConfigYaml" Source="..\common\config.yaml" KeyPath="yes" />
+      </Component>
+      <Component Id="Requirements" Guid="*">
+        <File Id="RequirementsTxt" Source="..\common\requirements.txt" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+  </Product>
+</Wix>

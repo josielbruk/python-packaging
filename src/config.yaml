@@ -1,0 +1,13 @@
+# Mock Service Configuration
+service:
+  name: "DICOM Gateway Mock"
+  version: "1.0.0"
+  log_level: "INFO"
+
+network:
+  dicom_port: 11112
+  health_check_port: 8080
+
+paths:
+  data_directory: "C:\\Apps\\DicomGateway\\shared\\data"
+  log_directory: "C:\\Apps\\DicomGateway\\shared\\logs"

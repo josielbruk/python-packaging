@@ -1,0 +1,25 @@
+
+# Gitleaks allowlist for false positives
+# Add file:line patterns for legitimate secrets that gitleaks flags incorrectly
+#
+# Format: path/to/file:line_number:hash
+# Example: docs/examples/sample.md:42:b1234567890abcdef
+
+# Add your allowlist entries below this line
+
+
+src/services/storage.py:ipv4:74
+tests/integration/test_c_store_saves_metadata.py:ipv4:21
+tests/integration/test_c_store_saves_metadata.py:ipv4:41
+tests/integration/test_c_store_saves_metadata.py:ipv4:52
+tests/integration/test_c_store_saves_metadata.py:ipv4:65
+tests/services/dicom/test_c_store.py:ipv4:15
+tests/services/dicom/test_c_store.py:ipv4:48
+tests/services/test_storage.py:ipv4:37
+tests/services/test_storage.py:ipv4:40
+tests/services/test_storage.py:ipv4:52
+tests/services/test_storage.py:ipv4:55
+tests/services/test_storage.py:ipv4:88
+tests/services/test_storage.py:ipv4:107
+tests/services/test_storage.py:ipv4:136
+tests/services/test_storage.py:ipv4:176
