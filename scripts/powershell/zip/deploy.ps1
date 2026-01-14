@@ -246,7 +246,7 @@ if (Test-Path $migrationScript) {
         Write-Host "  Database backed up to: $backupPath" -ForegroundColor Gray
 
         # Keep only last 5 backups
-        $backups = Get-ChildItem -Path $dataDir -Filter "*.db.backup-*" | Sort-Object CreationTime -Descending
+        $backups = @(Get-ChildItem -Path $dataDir -Filter "*.db.backup-*" | Sort-Object CreationTime -Descending)
         if ($backups.Count -gt 5) {
             $backups | Select-Object -Skip 5 | Remove-Item -Force
         }
