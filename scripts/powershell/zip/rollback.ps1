@@ -52,7 +52,7 @@ if (-not (Test-Path $previousJunction)) {
     exit 1
 }
 
-$previousTarget = (Get-Item $previousJunction).Target
+$previousTarget = (Get-Item $previousJunction).Target[0]
 Write-Host "Previous version found: $previousTarget" -ForegroundColor Green
 
 # Step 3: Switch junction
@@ -70,7 +70,7 @@ Write-Host "Junction switched to previous version" -ForegroundColor Green
 # Step 4: Verify rollback
 Write-Host "`nStep 4: Verifying rollback..." -ForegroundColor Yellow
 
-$appScript = Join-Path $currentJunction "app\mock_service.py"
+$appScript = Join-Path $currentJunction "src\mock_service.py"
 if (Test-Path $appScript) {
     Write-Host "Rollback verification successful" -ForegroundColor Green
 
