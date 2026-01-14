@@ -243,6 +243,7 @@ Write-Host "Dependencies installed" -ForegroundColor Green
 Write-Host "`nStep 4: Database management..." -ForegroundColor Yellow
 Write-Host "  Service continues running during migrations..." -ForegroundColor Gray
 
+$migrationStart = Get-Date
 $dbPath = Join-Path $dataDir "gateway.db"
 $migrationScript = Join-Path $versionDir "src\migrations\migrate.py"
 
@@ -500,10 +501,10 @@ update_deployment_phase(
         # Complete deployment tracking
         $deployEnd = Get-Date
         $totalDuration = ($deployEnd - $deployStart).TotalSeconds
-        
+
         $deploymentStatus = if ($healthCheckSuccess) { 'success' } else { 'warning' }
         $timeToHealthyStr = if ($timeToHealthy -ne 'null') { "'$timeToHealthy'" } else { 'null' }
-        
+
         $completeScript = @"
 import sys
 import os
@@ -524,12 +525,12 @@ complete_deployment(
 "@
         $completeScript | & $venvPython -c "exec(input())" | Out-Null
         Write-Host "Deployment metrics recorded successfully" -ForegroundColor Green
-        
+
         # Show metrics summary
         Write-Host "`nDeployment Metrics Summary:" -ForegroundColor Cyan
         Write-Host "  Extract: $([math]::Round($extractDuration, 2))s | venv: $([math]::Round($venvDuration, 2))s | Migration: $([math]::Round($migrationDuration, 2))s | Cutover: $([math]::Round($cutoverDuration, 2))s" -ForegroundColor Gray
         Write-Host "  Total: $([math]::Round($totalDuration, 2))s | Downtime: $([math]::Round($cutoverDuration, 2))s" -ForegroundColor Gray
-        
+
     } else {
         Write-Warning "Failed to start deployment tracking"
     }

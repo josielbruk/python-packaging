@@ -45,7 +45,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             # Add deployment history from database (legacy table)
             try:
                 from .db import get_deployment_history, get_deployment_metrics, get_deployment_statistics
-                
+
                 deployments = get_deployment_history(limit=5)
                 response['deployment_history'] = [
                     {
@@ -57,7 +57,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     for d in deployments
                 ]
                 response['current_deployment'] = response['deployment_history'][0] if response['deployment_history'] else None
-                
+
                 # Add enhanced deployment metrics
                 metrics = get_deployment_metrics(limit=5)
                 response['deployment_metrics'] = [
@@ -79,7 +79,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     }
                     for m in metrics
                 ]
-                
+
                 # Add deployment statistics
                 stats = get_deployment_statistics()
                 if stats:

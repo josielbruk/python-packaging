@@ -156,11 +156,11 @@ def get_current_deployment():
 
 # Enhanced deployment metrics functions
 
-def start_deployment_tracking(version, previous_version=None, hostname=None, 
+def start_deployment_tracking(version, previous_version=None, hostname=None,
                              os_version=None, python_version=None, method='manual'):
     """Start tracking a new deployment - returns deployment_id"""
     from datetime import datetime
-    
+
     query = """
         INSERT INTO deployment_metrics (
             version, previous_version, deployment_started_at,
@@ -168,7 +168,7 @@ def start_deployment_tracking(version, previous_version=None, hostname=None,
             deployment_method, deployment_status
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'in-progress')
     """
-    
+
     started_at = datetime.now().isoformat()
     with get_connection() as conn:
         cursor = conn.execute(query, (
@@ -184,17 +184,17 @@ def update_deployment_phase(deployment_id, **kwargs):
     # Build dynamic UPDATE query
     fields = []
     values = []
-    
+
     for key, value in kwargs.items():
         fields.append(f"{key} = ?")
         values.append(value)
-    
+
     if not fields:
         return
-    
+
     values.append(deployment_id)
     query = f"UPDATE deployment_metrics SET {', '.join(fields)} WHERE id = ?"
-    
+
     return execute_write(query, tuple(values))
 
 
@@ -204,7 +204,7 @@ def complete_deployment(deployment_id, status='success', error_message=None,
                        time_to_healthy=None):
     """Mark deployment as complete with final metrics"""
     from datetime import datetime
-    
+
     query = """
         UPDATE deployment_metrics
         SET deployment_completed_at = ?,
@@ -217,7 +217,7 @@ def complete_deployment(deployment_id, status='success', error_message=None,
             time_to_healthy = ?
         WHERE id = ?
     """
-    
+
     completed_at = datetime.now().isoformat()
     return execute_write(query, (
         completed_at, status, error_message,
@@ -252,7 +252,7 @@ def get_latest_deployment_metrics():
 def get_deployment_statistics():
     """Get aggregate deployment statistics"""
     query = """
-        SELECT 
+        SELECT
             COUNT(*) as total_deployments,
             AVG(total_duration) as avg_duration,
             AVG(downtime_duration) as avg_downtime,

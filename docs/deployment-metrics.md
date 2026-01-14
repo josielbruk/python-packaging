@@ -63,7 +63,7 @@ curl http://vm-qzum-vm1:8080/health
   "service": "DicomGatewayMock",
   "version": "b0c2642",
   "python_version": "3.14.2",
-  
+
   "deployment_metrics": [
     {
       "version": "b0c2642",
@@ -82,7 +82,7 @@ curl http://vm-qzum-vm1:8080/health
       "status": "success"
     }
   ],
-  
+
   "deployment_statistics": {
     "total_deployments": 15,
     "successful_deployments": 14,
@@ -93,7 +93,7 @@ curl http://vm-qzum-vm1:8080/health
     "max_duration": 180.2,
     "avg_health_check_time": 2.3
   },
-  
+
   "deployment_history": [
     {
       "version": "b0c2642",
@@ -112,18 +112,18 @@ curl http://vm-qzum-vm1:8080/health
 ```sql
 CREATE TABLE deployment_metrics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    
+
     -- Version and timing
     version TEXT NOT NULL,
     previous_version TEXT,
     deployment_started_at TEXT NOT NULL,
     deployment_completed_at TEXT,
-    
+
     -- VM Information
     hostname TEXT,
     os_version TEXT,
     python_version TEXT,
-    
+
     -- Deployment phases (seconds)
     extract_duration REAL,
     venv_rebuild_duration REAL,
@@ -131,18 +131,18 @@ CREATE TABLE deployment_metrics (
     cutover_duration REAL,
     total_duration REAL,
     downtime_duration REAL,
-    
+
     -- Health verification
     health_check_success INTEGER DEFAULT 0,
     health_check_duration REAL,
     time_to_healthy TEXT,
-    
+
     -- Deployment info
     deployment_method TEXT DEFAULT 'manual',
     deployment_status TEXT DEFAULT 'in-progress',
     error_message TEXT,
     notes TEXT,
-    
+
     UNIQUE(version, deployment_started_at)
 );
 ```
@@ -212,7 +212,7 @@ ORDER BY total_duration DESC
 LIMIT 10;
 
 -- Average deployment time by month
-SELECT 
+SELECT
     strftime('%Y-%m', deployment_started_at) as month,
     AVG(total_duration) as avg_duration,
     AVG(downtime_duration) as avg_downtime,
@@ -226,8 +226,8 @@ ORDER BY month DESC;
 SELECT version, total_duration, downtime_duration
 FROM deployment_metrics
 WHERE total_duration > (
-    SELECT AVG(total_duration) 
-    FROM deployment_metrics 
+    SELECT AVG(total_duration)
+    FROM deployment_metrics
     WHERE deployment_status = 'success'
 );
 

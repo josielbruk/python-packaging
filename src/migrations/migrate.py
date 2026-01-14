@@ -70,7 +70,7 @@ def apply_migration_v1(conn):
     """)
 
     conn.execute("""
-        INSERT INTO schema_version (version, description)
+        INSERT OR IGNORE INTO schema_version (version, description)
         VALUES (1, 'Initial schema - DICOM studies and logs')
     """)
 
@@ -99,7 +99,7 @@ def apply_migration_v2(conn):
     """)
 
     conn.execute("""
-        INSERT INTO schema_version (version, description)
+        INSERT OR IGNORE INTO schema_version (version, description)
         VALUES (2, 'Added performance metrics table')
     """)
 
@@ -132,7 +132,7 @@ def apply_migration_v3(conn):
     """)
 
     conn.execute("""
-        INSERT INTO schema_version (version, description)
+        INSERT OR IGNORE INTO schema_version (version, description)
         VALUES (3, 'Added deployment history tracking')
     """)
 
@@ -148,18 +148,18 @@ def apply_migration_v4(conn):
     conn.execute("""
         CREATE TABLE IF NOT EXISTS deployment_metrics (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            
+
             -- Version and timing
             version TEXT NOT NULL,
             previous_version TEXT,
             deployment_started_at TEXT NOT NULL,
             deployment_completed_at TEXT,
-            
+
             -- VM Information
             hostname TEXT,
             os_version TEXT,
             python_version TEXT,
-            
+
             -- Deployment phases (seconds)
             extract_duration REAL,
             venv_rebuild_duration REAL,
@@ -167,18 +167,18 @@ def apply_migration_v4(conn):
             cutover_duration REAL,
             total_duration REAL,
             downtime_duration REAL,
-            
+
             -- Health verification
             health_check_success INTEGER DEFAULT 0,
             health_check_duration REAL,
             time_to_healthy TEXT,
-            
+
             -- Deployment info
             deployment_method TEXT DEFAULT 'manual',
             deployment_status TEXT DEFAULT 'in-progress',
             error_message TEXT,
             notes TEXT,
-            
+
             -- Indexes for common queries
             UNIQUE(version, deployment_started_at)
         )
@@ -200,7 +200,7 @@ def apply_migration_v4(conn):
     """)
 
     conn.execute("""
-        INSERT INTO schema_version (version, description)
+        INSERT OR IGNORE INTO schema_version (version, description)
         VALUES (4, 'Enhanced deployment metrics with VM info and phase timing')
     """)
 
