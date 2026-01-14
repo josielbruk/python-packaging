@@ -172,9 +172,14 @@ $pythonExe = $null
 $pythonPaths = @(
     "C:\Python314\python.exe",
     "C:\Program Files\Python314\python.exe",
-    "C:\Python3\python.exe",
-    (Get-Command python.exe -ErrorAction SilentlyContinue).Source
+    "C:\Python3\python.exe"
 )
+
+# Check system PATH for Python
+$pythonCmd = Get-Command python.exe -ErrorAction SilentlyContinue
+if ($pythonCmd) {
+    $pythonPaths += $pythonCmd.Source
+}
 
 foreach ($path in $pythonPaths) {
     if ($path -and (Test-Path $path)) {
