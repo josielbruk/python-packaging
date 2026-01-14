@@ -7,9 +7,9 @@ on:
   workflow_dispatch:  # Allow manual trigger
     inputs:
       version:
-        description: 'Version number (e.g., 1.2.3)'
-        required: true
-        default: '1.0.0'
+        description: 'Version number (e.g., 1.2.3) - Leave empty to use commit SHA'
+        required: false
+        default: ''
       publish_to_github:
         description: 'Publish to GitHub Releases'
         type: boolean
