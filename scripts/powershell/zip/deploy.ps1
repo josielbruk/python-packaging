@@ -356,6 +356,40 @@ $migrationEnd = Get-Date
 $phaseTimings['migration'] = ($migrationEnd - $migrationStart).TotalSeconds
 Write-DeploymentLog "STEP 4 COMPLETED: Database management (took $([math]::Round($phaseTimings['migration'], 2))s)" "SUCCESS"
 
+# Step 4.5: Update NSSM service configuration (before stopping service)
+Write-Host "`nStep 4.5: Updating service configuration..." -ForegroundColor Yellow
+Write-DeploymentLog "STEP 4.5: Updating service configuration" "INFO"
+
+# Locate NSSM
+$nssmExe = $null
+$nssmCommand = Get-Command nssm.exe -ErrorAction SilentlyContinue
+if ($nssmCommand) {
+    $nssmExe = $nssmCommand.Source
+} else {
+    $localNssm = Join-Path $BaseInstallPath "tools\nssm\nssm.exe"
+    if (Test-Path $localNssm) {
+        $nssmExe = $localNssm
+    }
+}
+
+if ($nssmExe) {
+    $startScript = Join-Path $currentJunction "start-service.bat"
+    $logFile = Join-Path $BaseInstallPath "logs\$ServiceName-$(Get-Date -Format 'yyyy-MM-dd').log"
+    $errorLogFile = Join-Path $BaseInstallPath "logs\$ServiceName-error-$(Get-Date -Format 'yyyy-MM-dd').log"
+
+    # Update NSSM config while service is still running (changes take effect on next start)
+    & $nssmExe set $ServiceName Application $startScript 2>&1 | Out-Null
+    & $nssmExe set $ServiceName AppDirectory $currentJunction 2>&1 | Out-Null
+    & $nssmExe set $ServiceName AppStdout $logFile 2>&1 | Out-Null
+    & $nssmExe set $ServiceName AppStderr $errorLogFile 2>&1 | Out-Null
+
+    Write-Host "Service configuration updated" -ForegroundColor Green
+    Write-DeploymentLog "  NSSM configuration updated (takes effect on restart)" "SUCCESS"
+} else {
+    Write-Host "NSSM not found, will configure in Step 12" -ForegroundColor Yellow
+    Write-DeploymentLog "  NSSM not found, skipping pre-configuration" "WARNING"
+}
+
 # ============================================
 # CRITICAL SECTION: Minimize Downtime
 # ============================================
@@ -483,7 +517,7 @@ import os
 try:
     sys.path.insert(0, r'$currentJunction\src')
     os.environ['DATABASE_PATH'] = r'$dbPath'
-    
+
     from db import record_deployment
     record_deployment('$version', 'azure-arc', 'Deployed via Azure Arc run-command')
     print('Deployment recorded successfully')
@@ -617,43 +651,22 @@ $errorLogFile = Join-Path $logsDir "$ServiceName-error-$(Get-Date -Format 'yyyy-
 Write-Host "Log directory: $logsDir" -ForegroundColor Green
 Write-DeploymentLog "STEP 11 COMPLETED: Log directory configured: $logsDir" "SUCCESS"
 
-# Step 12: Configure Windows Service (if needed)
-Write-Host "`nStep 12: Configuring Windows Service..." -ForegroundColor Yellow
-Write-DeploymentLog "STEP 12: Configuring Windows Service" "INFO"
-
-$startScript = Join-Path $currentJunction "start-service.bat"
+# Step 12: Verify service status
+Write-Host "`nStep 12: Verifying service..." -ForegroundColor Yellow
+Write-DeploymentLog "STEP 12: Verifying service status" "INFO"
 
 # Check if service exists
 $existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 
 if ($existingService) {
-    Write-Host "Service exists, stopping and updating configuration..." -ForegroundColor Yellow
-
-    # Stop the service
-    & $nssmExe stop $ServiceName
-    Start-Sleep -Seconds 2
-
-    # Update service configuration
-    & $nssmExe set $ServiceName Application $startScript
-    & $nssmExe set $ServiceName AppDirectory $currentJunction
-    & $nssmExe set $ServiceName AppStdout $logFile
-    & $nssmExe set $ServiceName AppStderr $errorLogFile
-    & $nssmExe set $ServiceName AppRotateFiles 1
-    & $nssmExe set $ServiceName AppRotateOnline 1
-    & $nssmExe set $ServiceName AppRotateBytes 10485760  # 10MB
-
-    Write-Host "Service configuration updated" -ForegroundColor Green
-
-    # Restart the service with updated configuration
-    Write-Host "Restarting service with new configuration..." -ForegroundColor Yellow
-    & $nssmExe start $ServiceName
-    Start-Sleep -Seconds 3
-
-    $restartedService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-    if ($restartedService -and $restartedService.Status -eq 'Running') {
-        Write-Host "Service restarted successfully" -ForegroundColor Green
+    # Service exists and was already started in Step 7 with updated config
+    $serviceStatus = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    if ($serviceStatus.Status -eq 'Running') {
+        Write-Host "Service is running with updated configuration" -ForegroundColor Green
+        Write-DeploymentLog "STEP 12 COMPLETED: Service verified and running" "SUCCESS"
     } else {
-        Write-Warning "Service did not start after restart. Status: $($restartedService.Status)"
+        Write-Warning "Service status: $($serviceStatus.Status)"
+        Write-DeploymentLog "  WARNING: Service not running: $($serviceStatus.Status)" "WARNING"
     }
 } else {
     Write-Host "Creating new service..." -ForegroundColor Yellow
