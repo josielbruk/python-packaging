@@ -370,7 +370,7 @@ jobs:
               --resource-group "dtos-gateway-rg" \
               --machine-name "hospital-gateway-01" \
               --name "Deploy-${{ needs.build-zip.outputs.version }}" \
-              --script-uri "https://raw.githubusercontent.com/YOUR_ORG/YOUR_REPO/main/scripts/powershell/zip/deploy.ps1" \
+              --script-uri "https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/powershell/zip/deploy.ps1" \
               --parameters '[{"name":"version","value":"${{ needs.build-zip.outputs.version }}"}, {"name":"packageUrl","value":"https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${{ needs.build-zip.outputs.zip_artifact }}"}]'
             ```
 
@@ -387,7 +387,7 @@ jobs:
             ```powershell
             az connectedmachine run-command create \
               --machine-name "hospital-gateway-01" \
-              --script-uri "https://raw.githubusercontent.com/YOUR_ORG/YOUR_REPO/main/scripts/powershell/zip/rollback.ps1"
+              --script-uri "https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/powershell/zip/rollback.ps1"
             ```
 
             Co-Authored-By: GitHub Actions <noreply@github.com>
