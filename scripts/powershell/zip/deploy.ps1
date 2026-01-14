@@ -81,16 +81,17 @@ Write-Host "`nStep 2: Preparing directory structure..." -ForegroundColor Yellow
 
 $releasesDir = Join-Path $BaseInstallPath "releases"
 $sharedDir = Join-Path $BaseInstallPath "shared"
+$dataDir = Join-Path $BaseInstallPath "data"
+$logsDir = Join-Path $BaseInstallPath "logs"
 
-if (-not (Test-Path $releasesDir)) {
-    New-Item -ItemType Directory -Path $releasesDir -Force | Out-Null
-}
-
-if (-not (Test-Path $sharedDir)) {
-    New-Item -ItemType Directory -Path $sharedDir -Force | Out-Null
+foreach ($dir in @($releasesDir, $sharedDir, $dataDir, $logsDir)) {
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
 }
 
 Write-Host "Directory structure ready" -ForegroundColor Green
+Write-Host "  Data directory: $dataDir" -ForegroundColor Gray
 
 # Step 3: Extract version from ZIP filename or use provided version
 Write-Host "`nStep 3: Extracting package..." -ForegroundColor Yellow
@@ -281,6 +282,72 @@ if (Test-Path $appScript) {
     exit 1
 }
 
+# Step 6a: Database initialization and migration
+Write-Host "`nStep 6a: Database management..." -ForegroundColor Yellow
+
+$dbPath = Join-Path $dataDir "gateway.db"
+$migrationScript = Join-Path $currentJunction "src\migrations\migrate.py"
+
+# Check if migration script exists
+if (Test-Path $migrationScript) {
+    Write-Host "Migration script found, running database migrations..." -ForegroundColor Gray
+
+    # Backup database before migration (if it exists)
+    if (Test-Path $dbPath) {
+        $backupPath = "$dbPath.backup-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        Copy-Item -Path $dbPath -Destination $backupPath -Force
+        Write-Host "  Database backed up to: $backupPath" -ForegroundColor Gray
+
+        # Keep only last 5 backups
+        $backups = Get-ChildItem -Path $dataDir -Filter "*.db.backup-*" | Sort-Object CreationTime -Descending
+        if ($backups.Count -gt 5) {
+            $backups | Select-Object -Skip 5 | Remove-Item -Force
+        }
+    }
+
+    # Set environment variable for database path
+    $env:DATABASE_PATH = $dbPath
+
+    # Run migrations
+    try {
+        & $venvPython $migrationScript
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Database migrations completed successfully" -ForegroundColor Green
+        } else {
+            Write-Warning "Database migration returned non-zero exit code: $LASTEXITCODE"
+        }
+    } catch {
+        Write-Warning "Failed to run database migrations: $_"
+        Write-Host "Deployment will continue, but manual database review may be needed" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "No migration script found, skipping database migrations" -ForegroundColor Gray
+    Write-Host "  Database location: $dbPath" -ForegroundColor Gray
+
+    # Just ensure database directory exists and is accessible
+    if (-not (Test-Path $dbPath)) {
+        Write-Host "  Database will be created on first application start" -ForegroundColor Gray
+    }
+}
+
+# Step 6b: Record deployment in database
+Write-Host "`nStep 6b: Recording deployment..." -ForegroundColor Yellow
+
+$recordScript = @"
+import sys
+sys.path.insert(0, r'$currentJunction\src')
+from db import record_deployment
+record_deployment('$version', 'azure-arc', 'Deployed via Azure Arc run-command')
+print('Deployment recorded')
+"@
+
+try {
+    $recordScript | & $venvPython -c "exec(input())"
+    Write-Host "Deployment recorded in database" -ForegroundColor Green
+} catch {
+    Write-Warning "Failed to record deployment: $_"
+}
+
 # Step 7: Cleanup old versions (keep last 3)
 Write-Host "`nStep 7: Cleaning up old versions..." -ForegroundColor Yellow
 
@@ -289,18 +356,18 @@ $versions = Get-ChildItem -Path $releasesDir -Directory | Sort-Object CreationTi
 
 if ($versions.Count -gt 3) {
     $versionsToDelete = $versions | Select-Object -Skip 3
-    
+
     foreach ($versionDir in $versionsToDelete) {
         # Only delete if it's not currently in use
         $currentTarget = (Get-Item $currentJunction).Target[0]
         $previousTarget = if (Test-Path $previousJunction) { (Get-Item $previousJunction).Target[0] } else { $null }
-        
+
         if ($versionDir.FullName -ne $currentTarget -and $versionDir.FullName -ne $previousTarget) {
             Write-Host "  Removing old version: $($versionDir.Name)" -ForegroundColor Gray
             Remove-Item -Path $versionDir.FullName -Recurse -Force
         }
     }
-    
+
     $remainingCount = (Get-ChildItem -Path $releasesDir -Directory).Count
     Write-Host "Cleanup complete - $remainingCount version(s) retained" -ForegroundColor Green
 } else {

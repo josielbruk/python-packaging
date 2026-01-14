@@ -5,6 +5,7 @@ from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
 import json
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -40,6 +41,24 @@ class HealthHandler(BaseHTTPRequestHandler):
                 'version': VERSION,
                 'python_version': sys.version.split()[0]
             }
+
+            # Add deployment history from database
+            try:
+                from db import get_deployment_history
+                deployments = get_deployment_history(limit=5)
+                response['deployment_history'] = [
+                    {
+                        'version': d['version'],
+                        'deployed_at': d['deployed_at'],
+                        'method': d['deployment_method'],
+                        'notes': d['notes']
+                    }
+                    for d in deployments
+                ]
+                response['current_deployment'] = response['deployment_history'][0] if response['deployment_history'] else None
+            except Exception as e:
+                response['deployment_history_error'] = str(e)
+
             self.wfile.write(json.dumps(response, indent=2).encode())
         else:
             self.send_response(404)
