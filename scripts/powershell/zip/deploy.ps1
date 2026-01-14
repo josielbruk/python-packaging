@@ -64,20 +64,8 @@ if (-not (Test-Path $ZipPath)) {
     exit 1
 }
 
-# Step 1: Stop service if running
-Write-Host "Step 1: Stopping service..." -ForegroundColor Yellow
-
-$service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if ($service -and $service.Status -eq 'Running') {
-    Stop-Service -Name $ServiceName -Force
-    Start-Sleep -Seconds 1
-    Write-Host "Service stopped" -ForegroundColor Green
-} else {
-    Write-Host "Service not running or not installed" -ForegroundColor Yellow
-}
-
-# Step 2: Create directory structure
-Write-Host "`nStep 2: Preparing directory structure..." -ForegroundColor Yellow
+# Step 1: Prepare directory structure
+Write-Host "Step 1: Preparing directory structure..." -ForegroundColor Yellow
 
 $releasesDir = Join-Path $BaseInstallPath "releases"
 $sharedDir = Join-Path $BaseInstallPath "shared"
@@ -93,8 +81,9 @@ foreach ($dir in @($releasesDir, $sharedDir, $dataDir, $logsDir)) {
 Write-Host "Directory structure ready" -ForegroundColor Green
 Write-Host "  Data directory: $dataDir" -ForegroundColor Gray
 
-# Step 3: Extract version from ZIP filename or use provided version
-Write-Host "`nStep 3: Extracting package..." -ForegroundColor Yellow
+# Step 2: Extract package to new version directory
+Write-Host "`nStep 2: Extracting package..." -ForegroundColor Yellow
+Write-Host "  Service continues running during extraction..." -ForegroundColor Gray
 
 # Use provided version or extract from filename (e.g., DicomGatewayMock-1.0.0.zip)
 if (-not $Version) {
@@ -123,44 +112,12 @@ Add-Type -Assembly System.IO.Compression.FileSystem
 
 Write-Host "Package extracted to: $versionDir" -ForegroundColor Green
 
-# Step 4: Update directory junction
-Write-Host "`nStep 4: Switching junction to new version..." -ForegroundColor Yellow
+# Step 3: Rebuild virtual environment in new version (service still running)
+Write-Host "`nStep 3: Rebuilding virtual environment..." -ForegroundColor Yellow
+Write-Host "  Service continues running during venv rebuild..." -ForegroundColor Gray
 
-$currentJunction = Join-Path $BaseInstallPath "current"
-$previousJunction = Join-Path $BaseInstallPath "previous"
-
-# If current junction exists, preserve it as previous
-if (Test-Path $currentJunction) {
-    # Get the current target (Target returns an array, take first element)
-    $currentTarget = (Get-Item $currentJunction).Target
-    if ($currentTarget -is [array]) {
-        $currentTarget = $currentTarget[0]
-    }
-
-    # Remove previous junction if exists
-    if (Test-Path $previousJunction) {
-        (Get-Item $previousJunction).Delete()
-    }
-
-    # Create new previous junction pointing to old current target
-    if ($currentTarget) {
-        New-Item -ItemType Junction -Path $previousJunction -Target $currentTarget -Force | Out-Null
-        Write-Host "Previous junction created" -ForegroundColor Green
-    }
-
-    # Remove current junction
-    (Get-Item $currentJunction).Delete()
-}
-
-# Create new current junction pointing to new version
-New-Item -ItemType Junction -Path $currentJunction -Target $versionDir -Force | Out-Null
-Write-Host "Current junction updated to: $version" -ForegroundColor Green
-
-# Step 5: Rebuild virtual environment for target machine
-Write-Host "`nStep 5: Rebuilding virtual environment..." -ForegroundColor Yellow
-
-$venvPath = Join-Path $currentJunction ".venv"
-$requirementsFile = Join-Path $currentJunction "src\requirements.txt"
+$venvPath = Join-Path $versionDir ".venv"
+$requirementsFile = Join-Path $versionDir "src\requirements.txt"
 
 # Remove the build machine's virtual environment
 if (Test-Path $venvPath) {
@@ -271,22 +228,12 @@ $venvPython = Join-Path $venvPath "Scripts\python.exe"
 
 Write-Host "Dependencies installed" -ForegroundColor Green
 
-# Step 6: Verify deployment
-Write-Host "`nStep 6: Verifying deployment..." -ForegroundColor Yellow
-
-$appScript = Join-Path $currentJunction "src\mock_service.py"
-if (Test-Path $appScript) {
-    Write-Host "Deployment verified successfully" -ForegroundColor Green
-} else {
-    Write-Error "Deployment verification failed - application files not found"
-    exit 1
-}
-
-# Step 6a: Database initialization and migration
-Write-Host "`nStep 6a: Database management..." -ForegroundColor Yellow
+# Step 4: Run database migrations in new version (service still running)
+Write-Host "`nStep 4: Database management..." -ForegroundColor Yellow
+Write-Host "  Service continues running during migrations..." -ForegroundColor Gray
 
 $dbPath = Join-Path $dataDir "gateway.db"
-$migrationScript = Join-Path $currentJunction "src\migrations\migrate.py"
+$migrationScript = Join-Path $versionDir "src\migrations\migrate.py"
 
 # Check if migration script exists
 if (Test-Path $migrationScript) {
@@ -330,9 +277,99 @@ if (Test-Path $migrationScript) {
     }
 }
 
-# Step 6b: Record deployment in database
-Write-Host "`nStep 6b: Recording deployment..." -ForegroundColor Yellow
+# ============================================
+# CRITICAL SECTION: Minimize Downtime
+# ============================================
 
+# Step 5: Stop service (beginning of critical section)
+Write-Host "`n========================================" -ForegroundColor Red
+Write-Host "CRITICAL SECTION: Service Cutover" -ForegroundColor Red
+Write-Host "========================================" -ForegroundColor Red
+Write-Host "Step 5: Stopping service..." -ForegroundColor Yellow
+
+$cutoverStart = Get-Date
+$service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+if ($service -and $service.Status -eq 'Running') {
+    Stop-Service -Name $ServiceName -Force
+    Write-Host "Service stopped" -ForegroundColor Green
+} else {
+    Write-Host "Service not running" -ForegroundColor Yellow
+}
+
+# Step 6: Switch junction (atomic operation)
+Write-Host "`nStep 6: Switching junction..." -ForegroundColor Yellow
+
+$currentJunction = Join-Path $BaseInstallPath "current"
+$previousJunction = Join-Path $BaseInstallPath "previous"
+
+# If current junction exists, preserve it as previous
+if (Test-Path $currentJunction) {
+    # Get the current target (Target returns an array, take first element)
+    $currentTarget = (Get-Item $currentJunction).Target
+    if ($currentTarget -is [array]) {
+        $currentTarget = $currentTarget[0]
+    }
+
+    # Remove previous junction if exists
+    if (Test-Path $previousJunction) {
+        (Get-Item $previousJunction).Delete()
+    }
+
+    # Create new previous junction pointing to old current target
+    if ($currentTarget) {
+        New-Item -ItemType Junction -Path $previousJunction -Target $currentTarget -Force | Out-Null
+    }
+
+    # Remove current junction
+    (Get-Item $currentJunction).Delete()
+}
+
+# Create new current junction pointing to new version
+New-Item -ItemType Junction -Path $currentJunction -Target $versionDir -Force | Out-Null
+Write-Host "Junction switched to: $version" -ForegroundColor Green
+
+# Step 7: Start service (end of critical section)
+Write-Host "`nStep 7: Starting service..." -ForegroundColor Yellow
+
+# Locate NSSM quickly for service start
+$nssmExe = $null
+$nssmCommand = Get-Command nssm.exe -ErrorAction SilentlyContinue
+if ($nssmCommand) {
+    $nssmExe = $nssmCommand.Source
+} else {
+    $localNssm = Join-Path $BaseInstallPath "tools\nssm\nssm.exe"
+    if (Test-Path $localNssm) {
+        $nssmExe = $localNssm
+    }
+}
+
+if ($nssmExe -and $service) {
+    & $nssmExe start $ServiceName
+    Start-Sleep -Seconds 2
+    $serviceStatus = Get-Service -Name $ServiceName
+    if ($serviceStatus.Status -eq 'Running') {
+        Write-Host "Service started successfully" -ForegroundColor Green
+    } else {
+        Write-Warning "Service status: $($serviceStatus.Status)"
+    }
+} else {
+    Write-Host "Service will be configured later" -ForegroundColor Yellow
+}
+
+$cutoverEnd = Get-Date
+$cutoverDuration = ($cutoverEnd - $cutoverStart).TotalSeconds
+Write-Host "========================================" -ForegroundColor Green
+Write-Host "Downtime: $([math]::Round($cutoverDuration, 2)) seconds" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Green
+
+# ============================================
+# POST-DEPLOYMENT: Service is Running
+# ============================================
+
+# Step 8: Record deployment in database
+Write-Host "`nStep 8: Recording deployment..." -ForegroundColor Yellow
+
+$venvPython = Join-Path $currentJunction ".venv\Scripts\python.exe"
 $recordScript = @"
 import sys
 sys.path.insert(0, r'$currentJunction\src')
@@ -348,8 +385,8 @@ try {
     Write-Warning "Failed to record deployment: $_"
 }
 
-# Step 7: Cleanup old versions (keep last 3)
-Write-Host "`nStep 7: Cleaning up old versions..." -ForegroundColor Yellow
+# Step 9: Cleanup old versions (keep last 3)
+Write-Host "`nStep 9: Cleaning up old versions..." -ForegroundColor Yellow
 
 $releasesDir = Join-Path $BaseInstallPath "releases"
 $versions = Get-ChildItem -Path $releasesDir -Directory | Sort-Object CreationTime -Descending
@@ -374,8 +411,8 @@ if ($versions.Count -gt 3) {
     Write-Host "No cleanup needed - only $($versions.Count) version(s) exist" -ForegroundColor Green
 }
 
-# Step 8: Locate or Install NSSM (Non-Sucking Service Manager)
-Write-Host "`nStep 8: Locating NSSM..." -ForegroundColor Yellow
+# Step 10: Locate or Install NSSM (Non-Sucking Service Manager)
+Write-Host "`nStep 10: Locating NSSM..." -ForegroundColor Yellow
 
 # First, check if NSSM is available in PATH (system-wide installation)
 $nssmExe = $null
@@ -420,8 +457,8 @@ if (-not $nssmExe) {
     }
 }
 
-# Step 9: Configure logging
-Write-Host "`nStep 9: Configuring logging..." -ForegroundColor Yellow
+# Step 11: Configure logging
+Write-Host "`nStep 11: Configuring logging..." -ForegroundColor Yellow
 
 $logsDir = Join-Path $BaseInstallPath "logs"
 if (-not (Test-Path $logsDir)) {
@@ -433,8 +470,8 @@ $errorLogFile = Join-Path $logsDir "$ServiceName-error-$(Get-Date -Format 'yyyy-
 
 Write-Host "Log directory: $logsDir" -ForegroundColor Green
 
-# Step 10: Install/Update Windows Service using NSSM
-Write-Host "`nStep 10: Configuring Windows Service..." -ForegroundColor Yellow
+# Step 12: Configure Windows Service (if needed)
+Write-Host "`nStep 12: Configuring Windows Service..." -ForegroundColor Yellow
 
 $startScript = Join-Path $currentJunction "start-service.bat"
 
@@ -486,23 +523,15 @@ if ($existingService) {
     Write-Host "Service created successfully" -ForegroundColor Green
 }
 
-# Step 11: Start the service
-Write-Host "`nStep 11: Starting service..." -ForegroundColor Yellow
-
-& $nssmExe start $ServiceName
-Start-Sleep -Seconds 3
-
-$serviceStatus = Get-Service -Name $ServiceName
-if ($serviceStatus.Status -eq 'Running') {
-    Write-Host "Service started successfully" -ForegroundColor Green
-    Write-Host "Service Name: $ServiceName" -ForegroundColor Cyan
-    Write-Host "Service Status: $($serviceStatus.Status)" -ForegroundColor Cyan
-    Write-Host "Startup Type: $($serviceStatus.StartType)" -ForegroundColor Cyan
-    Write-Host "Log File: $logFile" -ForegroundColor Cyan
-    Write-Host "Error Log: $errorLogFile" -ForegroundColor Cyan
-} else {
-    Write-Warning "Service is in state: $($serviceStatus.Status)"
-    Write-Warning "Check logs at: $logsDir"
+# Verify final service status
+$serviceStatus = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+if ($serviceStatus -and $serviceStatus.Status -eq 'Running') {
+    Write-Host "`nService Status Verified:" -ForegroundColor Green
+    Write-Host "  Name: $ServiceName" -ForegroundColor Cyan
+    Write-Host "  Status: Running" -ForegroundColor Cyan
+    Write-Host "  Startup Type: $($serviceStatus.StartType)" -ForegroundColor Cyan
+    Write-Host "  Log File: $logFile" -ForegroundColor Cyan
+    Write-Host "  Error Log: $errorLogFile" -ForegroundColor Cyan
 }
 
 # Calculate deployment time
@@ -519,7 +548,8 @@ Write-Host "Service Status: Running"
 Write-Host "Auto-Start: Enabled"
 Write-Host "Auto-Restart on Failure: Enabled"
 Write-Host "Logs Directory: $logsDir"
-Write-Host "Deployment Duration: $([math]::Round($deployDuration, 2)) seconds"
+Write-Host "Total Deployment Duration: $([math]::Round($deployDuration, 2)) seconds" -ForegroundColor Cyan
+Write-Host "Service Downtime: $([math]::Round($cutoverDuration, 2)) seconds" -ForegroundColor Green
 Write-Host ""
 Write-Host "Service Management Commands:" -ForegroundColor Cyan
 Write-Host "  View Logs:    Get-Content '$logFile' -Tail 50 -Wait" -ForegroundColor Yellow
@@ -532,6 +562,7 @@ Write-Host ""
 $metrics = @{
     strategy = "ZIP"
     deploymentTime = $deployDuration
+    downtimeSeconds = $cutoverDuration
     version = $version
     installPath = $currentJunction
     timestamp = $deployEnd.ToString("yyyy-MM-dd HH:mm:ss")
