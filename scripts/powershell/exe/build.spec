@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 
 # Get the repository root directory (3 levels up from scripts/powershell/exe)
-repo_root = Path(__file__).parent.parent.parent.parent
+repo_root = Path(os.getcwd()).resolve().parent.parent.parent
 src_dir = repo_root / 'src'
 
 # Analysis: Scan the script and dependencies
