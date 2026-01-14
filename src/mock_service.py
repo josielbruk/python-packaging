@@ -50,10 +50,9 @@ class HealthHandler(BaseHTTPRequestHandler):
                 deployments = get_deployment_history(limit=10)
                 response['deployment_history'] = [
                     {
-                        'version': d['version'],
-                        'deployed_at': d['deployed_at'],
-                        'method': d['deployment_method'],
-                        'notes': d['notes']
+                        'commit': d['version'],
+                        'deployed_at': d['deployed_at'],  # ISO format: YYYY-MM-DD HH:MM:SS
+                        'method': d['deployment_method']
                     }
                     for d in deployments
                 ]
