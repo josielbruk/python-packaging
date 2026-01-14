@@ -1,8 +1,6 @@
-# Common dependencies for mock service
-# Include heavy libraries to simulate real package weight
+# Dependencies for DICOM Gateway Service
+# Based on pyproject.toml dependencies
 
-pydantic==2.9.2
-pyyaml==6.0.1
-numpy==1.26.4
-pillow==10.4.0
-requests==2.32.3
+pydicom>=3.0.1
+pynetdicom>=3.0.4
+pyyaml>=6.0.1
