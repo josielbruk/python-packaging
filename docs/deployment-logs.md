@@ -161,8 +161,8 @@ Example entry:
 ### View Most Recent Deployment
 ```powershell
 # Get the most recent deployment log
-$latestLog = Get-ChildItem "C:\Apps\DicomGatewayMock\logs\deployments\" -Filter "*.log" | 
-    Sort-Object CreationTime -Descending | 
+$latestLog = Get-ChildItem "C:\Apps\DicomGatewayMock\logs\deployments\" -Filter "*.log" |
+    Sort-Object CreationTime -Descending |
     Select-Object -First 1
 
 Get-Content $latestLog.FullName
@@ -223,7 +223,7 @@ Get-ChildItem "C:\Apps\DicomGatewayMock\logs\deployments\" -Filter "*.log" |
 $logsDir = "C:\Apps\DicomGatewayMock\logs\deployments\"
 $logsToKeep = 20
 
-$allLogs = Get-ChildItem $logsDir -Filter "*.log" | 
+$allLogs = Get-ChildItem $logsDir -Filter "*.log" |
     Sort-Object CreationTime -Descending
 
 if ($allLogs.Count -gt $logsToKeep) {
@@ -253,13 +253,13 @@ if ($errors.Count -gt 0) {
 ```powershell
 function Parse-DeploymentLog {
     param([string]$LogPath)
-    
+
     $content = Get-Content $LogPath
     $deployment = @{
         LogFile = Split-Path $LogPath -Leaf
         Events = @()
     }
-    
+
     foreach ($line in $content) {
         if ($line -match '^\[(.+?)\] \[(.+?)\] (.+)$') {
             $deployment.Events += @{
@@ -269,7 +269,7 @@ function Parse-DeploymentLog {
             }
         }
     }
-    
+
     return $deployment | ConvertTo-Json -Depth 5
 }
 

@@ -149,6 +149,7 @@ def get_current_deployment():
         SELECT * FROM deployment_history
         ORDER BY deployed_at DESC
         LIMIT 1
+    """
     rows = execute_query(query)
     return rows[0] if rows else None
 

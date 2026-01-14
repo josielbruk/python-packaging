@@ -22,53 +22,53 @@ def main():
     db_path = get_database_path()
     print(f"Database path: {db_path}")
     print(f"Database exists: {os.path.exists(db_path)}")
-    
+
     if not os.path.exists(db_path):
         print("\n[ERROR] Database file does not exist!")
         print(f"Expected location: {db_path}")
         return 1
-    
+
     # Get file size
     db_size = os.path.getsize(db_path)
     print(f"Database size: {db_size:,} bytes ({db_size/1024:.2f} KB)")
-    
+
     try:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
+
         # Check SQLite version
         cursor.execute("SELECT sqlite_version()")
         sqlite_version = cursor.fetchone()[0]
         print(f"\nSQLite version: {sqlite_version}")
-        
+
         # List all tables
         cursor.execute("""
-            SELECT name, sql FROM sqlite_master 
-            WHERE type='table' 
+            SELECT name, sql FROM sqlite_master
+            WHERE type='table'
             ORDER BY name
         """)
         tables = cursor.fetchall()
-        
+
         print(f"\nTables found: {len(tables)}")
         print("=" * 60)
-        
+
         for table in tables:
             table_name = table['name']
             print(f"\n[TABLE] {table_name}")
-            
+
             # Count rows
             cursor.execute(f"SELECT COUNT(*) as count FROM {table_name}")
             row_count = cursor.fetchone()['count']
             print(f"  Rows: {row_count}")
-            
+
             # Show schema
             cursor.execute(f"PRAGMA table_info({table_name})")
             columns = cursor.fetchall()
             print(f"  Columns: {len(columns)}")
             for col in columns:
                 print(f"    - {col['name']} ({col['type']}){' PRIMARY KEY' if col['pk'] else ''}{' NOT NULL' if col['notnull'] else ''}")
-        
+
         # Check schema version
         print("\n" + "=" * 60)
         print("\n[SCHEMA VERSION]")
@@ -85,7 +85,7 @@ def main():
                 print("No schema versions found!")
         except sqlite3.OperationalError as e:
             print(f"[ERROR] Could not read schema_version table: {e}")
-        
+
         # Check deployment history
         print("\n" + "=" * 60)
         print("\n[DEPLOYMENT HISTORY]")
@@ -100,7 +100,7 @@ def main():
                 print("No deployment history records found.")
         except sqlite3.OperationalError as e:
             print(f"[WARNING] deployment_history table doesn't exist or is inaccessible: {e}")
-        
+
         # Check deployment metrics
         print("\n" + "=" * 60)
         print("\n[DEPLOYMENT METRICS]")
@@ -124,12 +124,12 @@ def main():
                 print("No deployment metrics records found.")
         except sqlite3.OperationalError as e:
             print(f"[WARNING] deployment_metrics table doesn't exist or is inaccessible: {e}")
-        
+
         # Check indexes
         print("=" * 60)
         print("\n[INDEXES]")
         cursor.execute("""
-            SELECT name, tbl_name FROM sqlite_master 
+            SELECT name, tbl_name FROM sqlite_master
             WHERE type='index' AND sql IS NOT NULL
             ORDER BY tbl_name, name
         """)
@@ -143,13 +143,13 @@ def main():
                 print(f"    - {idx['name']}")
         else:
             print("No indexes found.")
-        
+
         conn.close()
-        
+
         print("\n" + "=" * 60)
         print("[DIAGNOSTIC COMPLETE]")
         return 0
-        
+
     except Exception as e:
         print(f"\n[ERROR] Failed to analyze database: {e}")
         import traceback
