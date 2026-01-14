@@ -38,25 +38,23 @@ class HealthHandler(BaseHTTPRequestHandler):
             response = {
                 'status': 'healthy',
                 'service': 'DicomGatewayMock',
-                'version': VERSION,
-                'python_version': sys.version.split()[0],
-                'timestamp': datetime.now().isoformat()
+                'current_version': VERSION,
+                'python_version': sys.version.split()[0]
             }
 
-            # Add simple deployment history from database
+            # Add deployment history from database
             try:
                 from .db import get_deployment_history
 
                 deployments = get_deployment_history(limit=10)
                 response['deployment_history'] = [
                     {
-                        'commit': d['version'],
-                        'deployed_at': d['deployed_at'],  # ISO format: YYYY-MM-DD HH:MM:SS
+                        'version': d['version'],
+                        'deployed_at': d['deployed_at'],
                         'method': d['deployment_method']
                     }
                     for d in deployments
                 ]
-                response['current_deployment'] = response['deployment_history'][0] if response['deployment_history'] else None
             except Exception as e:
                 response['deployment_history_error'] = str(e)
 

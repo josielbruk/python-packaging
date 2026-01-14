@@ -433,15 +433,8 @@ if ($nssmCommand) {
 
 if ($nssmExe -and $service) {
     & $nssmExe start $ServiceName
-    Start-Sleep -Seconds 2
-    $serviceStatus = Get-Service -Name $ServiceName
-    if ($serviceStatus.Status -eq 'Running') {
-        Write-Host "Service started successfully" -ForegroundColor Green
-        Write-DeploymentLog "  Service started successfully" "SUCCESS"
-    } else {
-        Write-Warning "Service status: $($serviceStatus.Status)"
-        Write-DeploymentLog "  Service status: $($serviceStatus.Status)" "WARNING"
-    }
+    Write-Host "Service start command issued" -ForegroundColor Green
+    Write-DeploymentLog "  Service start command issued" "SUCCESS"
 } else {
     Write-Host "Service will be configured later" -ForegroundColor Yellow
     Write-DeploymentLog "  Service will be configured in Step 12" "INFO"
@@ -487,21 +480,31 @@ $totalDuration = ((Get-Date) - $deploymentStartTime).TotalSeconds
 $recordScript = @"
 import sys
 import os
-sys.path.insert(0, r'$currentJunction\src')
-os.environ['DATABASE_PATH'] = r'$dbPath'
-
-from db import record_deployment
-record_deployment('$version', 'azure-arc', 'Deployed via Azure Arc run-command')
-print('Deployment recorded successfully')
+try:
+    sys.path.insert(0, r'$currentJunction\src')
+    os.environ['DATABASE_PATH'] = r'$dbPath'
+    
+    from db import record_deployment
+    record_deployment('$version', 'azure-arc', 'Deployed via Azure Arc run-command')
+    print('Deployment recorded successfully')
+except Exception as e:
+    print(f'ERROR: {e}')
+    import traceback
+    traceback.print_exc()
 "@
 
 try {
-    $recordOutput = $recordScript | & $venvPython -c "exec(input())" 2>&1
-    Write-Host "  Database record: $recordOutput" -ForegroundColor Green
-    Write-DeploymentLog "  Database output: $recordOutput" "SUCCESS"
+    $recordOutput = & $venvPython -c $recordScript 2>&1 | Out-String
+    if ($recordOutput -match 'ERROR:') {
+        Write-Warning "Database recording error: $recordOutput"
+        Write-DeploymentLog "  Database error: $recordOutput" "ERROR"
+    } else {
+        Write-Host "  $recordOutput" -ForegroundColor Green
+        Write-DeploymentLog "  Database: $recordOutput" "SUCCESS"
+    }
 } catch {
     Write-Warning "Failed to record deployment: $_"
-    Write-DeploymentLog "Failed to record deployment: $_ | Output: $recordOutput" "ERROR"
+    Write-DeploymentLog "Failed to record deployment: $_" "ERROR"
 }
 
 # Log deployment statistics to file
