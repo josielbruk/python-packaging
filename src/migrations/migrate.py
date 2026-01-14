@@ -75,7 +75,7 @@ def apply_migration_v1(conn):
     """)
 
     conn.commit()
-    print("  ✓ Migration v1 completed")
+    print("  [OK] Migration v1 completed")
 
 
 def apply_migration_v2(conn):
@@ -104,7 +104,7 @@ def apply_migration_v2(conn):
     """)
 
     conn.commit()
-    print("  ✓ Migration v2 completed")
+    print("  [OK] Migration v2 completed")
 
 
 def apply_migration_v3(conn):
@@ -137,7 +137,7 @@ def apply_migration_v3(conn):
     """)
 
     conn.commit()
-    print("  ✓ Migration v3 completed")
+    print("  [OK] Migration v3 completed")
 
 
 # Migration registry - add new migrations here in order
@@ -172,7 +172,7 @@ def main():
         print(f"Target schema version: {TARGET_VERSION}")
 
         if current_version >= TARGET_VERSION:
-            print("✓ Database is up to date")
+            print("[OK] Database is up to date")
             return 0
 
         # Apply pending migrations
@@ -184,11 +184,11 @@ def main():
             else:
                 print(f"  WARNING: Migration v{version} not found")
 
-        print(f"✓ Database migrated to version {TARGET_VERSION}")
+        print(f"[OK] Database migrated to version {TARGET_VERSION}")
         return 0
 
     except Exception as e:
-        print(f"✗ Migration failed: {e}", file=sys.stderr)
+        print(f"[ERROR] Migration failed: {e}", file=sys.stderr)
         conn.rollback()
         return 1
 
