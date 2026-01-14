@@ -42,9 +42,9 @@ if ($PackageUrl) {
     if (-not (Test-Path $tempDir)) {
         New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
     }
-    
+
     $ZipPath = Join-Path $tempDir "package.zip"
-    
+
     try {
         Invoke-WebRequest -Uri $PackageUrl -OutFile $ZipPath -UseBasicParsing
         Write-Host "Package downloaded successfully" -ForegroundColor Green
@@ -155,7 +155,7 @@ Write-Host "Current junction updated to: $version" -ForegroundColor Green
 # Step 5: Verify deployment
 Write-Host "`nStep 5: Verifying deployment..." -ForegroundColor Yellow
 
-$appScript = Join-Path $currentJunction "app\mock_service.py"
+$appScript = Join-Path $currentJunction "src\mock_service.py"
 if (Test-Path $appScript) {
     Write-Host "Deployment verified successfully" -ForegroundColor Green
 } else {
@@ -163,18 +163,117 @@ if (Test-Path $appScript) {
     exit 1
 }
 
-# Step 6: Restart service
-if ($service) {
-    Write-Host "`nStep 6: Starting service..." -ForegroundColor Yellow
-    Start-Service -Name $ServiceName
+# Step 6: Install/Update NSSM (Non-Sucking Service Manager)
+Write-Host "`nStep 6: Installing NSSM..." -ForegroundColor Yellow
+
+$nssmDir = Join-Path $BaseInstallPath "tools\nssm"
+$nssmExe = Join-Path $nssmDir "nssm.exe"
+
+if (-not (Test-Path $nssmExe)) {
+    Write-Host "Downloading NSSM..." -ForegroundColor Yellow
+
+    $nssmUrl = "https://nssm.cc/ci/nssm-2.24-101-g897c7ad.zip"
+    $nssmZip = Join-Path $env:TEMP "nssm.zip"
+    $nssmExtract = Join-Path $env:TEMP "nssm-extract"
+
+    Invoke-WebRequest -Uri $nssmUrl -OutFile $nssmZip -UseBasicParsing
+    Expand-Archive -Path $nssmZip -DestinationPath $nssmExtract -Force
+
+    # Copy the appropriate version (64-bit)
+    New-Item -ItemType Directory -Path $nssmDir -Force | Out-Null
+    Copy-Item -Path "$nssmExtract\nssm-*\win64\nssm.exe" -Destination $nssmExe -Force
+
+    # Cleanup
+    Remove-Item -Path $nssmZip, $nssmExtract -Recurse -Force -ErrorAction SilentlyContinue
+
+    Write-Host "NSSM installed successfully" -ForegroundColor Green
+} else {
+    Write-Host "NSSM already installed" -ForegroundColor Green
+}
+
+# Step 7: Configure logging
+Write-Host "`nStep 7: Configuring logging..." -ForegroundColor Yellow
+
+$logsDir = Join-Path $BaseInstallPath "logs"
+if (-not (Test-Path $logsDir)) {
+    New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
+}
+
+$logFile = Join-Path $logsDir "$ServiceName-$(Get-Date -Format 'yyyy-MM-dd').log"
+$errorLogFile = Join-Path $logsDir "$ServiceName-error-$(Get-Date -Format 'yyyy-MM-dd').log"
+
+Write-Host "Log directory: $logsDir" -ForegroundColor Green
+
+# Step 8: Install/Update Windows Service using NSSM
+Write-Host "`nStep 8: Configuring Windows Service..." -ForegroundColor Yellow
+
+$startScript = Join-Path $currentJunction "start-service.bat"
+
+# Check if service exists
+$existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+
+if ($existingService) {
+    Write-Host "Service exists, stopping and updating configuration..." -ForegroundColor Yellow
+
+    # Stop the service
+    & $nssmExe stop $ServiceName
     Start-Sleep -Seconds 2
 
-    $serviceStatus = (Get-Service -Name $ServiceName).Status
-    if ($serviceStatus -eq 'Running') {
-        Write-Host "Service started successfully" -ForegroundColor Green
-    } else {
-        Write-Warning "Service is in state: $serviceStatus"
-    }
+    # Update service configuration
+    & $nssmExe set $ServiceName Application $startScript
+    & $nssmExe set $ServiceName AppDirectory $currentJunction
+    & $nssmExe set $ServiceName AppStdout $logFile
+    & $nssmExe set $ServiceName AppStderr $errorLogFile
+    & $nssmExe set $ServiceName AppRotateFiles 1
+    & $nssmExe set $ServiceName AppRotateOnline 1
+    & $nssmExe set $ServiceName AppRotateBytes 10485760  # 10MB
+
+    Write-Host "Service configuration updated" -ForegroundColor Green
+} else {
+    Write-Host "Creating new service..." -ForegroundColor Yellow
+
+    # Install service
+    & $nssmExe install $ServiceName $startScript
+
+    # Configure service
+    & $nssmExe set $ServiceName AppDirectory $currentJunction
+    & $nssmExe set $ServiceName DisplayName "DICOM Gateway Mock Service"
+    & $nssmExe set $ServiceName Description "DICOM Gateway Mock Service for Performance Testing"
+    & $nssmExe set $ServiceName Start SERVICE_AUTO_START
+
+    # Configure logging
+    & $nssmExe set $ServiceName AppStdout $logFile
+    & $nssmExe set $ServiceName AppStderr $errorLogFile
+    & $nssmExe set $ServiceName AppRotateFiles 1
+    & $nssmExe set $ServiceName AppRotateOnline 1
+    & $nssmExe set $ServiceName AppRotateBytes 10485760  # 10MB
+    & $nssmExe set $ServiceName AppRotateSeconds 86400   # Daily rotation
+
+    # Configure failure recovery - restart on failure
+    & $nssmExe set $ServiceName AppExit Default Restart
+    & $nssmExe set $ServiceName AppRestartDelay 5000  # 5 seconds
+    & $nssmExe set $ServiceName AppThrottle 10000     # 10 seconds throttle
+
+    Write-Host "Service created successfully" -ForegroundColor Green
+}
+
+# Step 9: Start the service
+Write-Host "`nStep 9: Starting service..." -ForegroundColor Yellow
+
+& $nssmExe start $ServiceName
+Start-Sleep -Seconds 3
+
+$serviceStatus = Get-Service -Name $ServiceName
+if ($serviceStatus.Status -eq 'Running') {
+    Write-Host "Service started successfully" -ForegroundColor Green
+    Write-Host "Service Name: $ServiceName" -ForegroundColor Cyan
+    Write-Host "Service Status: $($serviceStatus.Status)" -ForegroundColor Cyan
+    Write-Host "Startup Type: $($serviceStatus.StartType)" -ForegroundColor Cyan
+    Write-Host "Log File: $logFile" -ForegroundColor Cyan
+    Write-Host "Error Log: $errorLogFile" -ForegroundColor Cyan
+} else {
+    Write-Warning "Service is in state: $($serviceStatus.Status)"
+    Write-Warning "Check logs at: $logsDir"
 }
 
 # Calculate deployment time
@@ -186,7 +285,18 @@ Write-Host "ZIP Deployment Complete!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "Installed Version: $version"
 Write-Host "Installation Path: $currentJunction"
+Write-Host "Service Name: $ServiceName"
+Write-Host "Service Status: Running"
+Write-Host "Auto-Start: Enabled"
+Write-Host "Auto-Restart on Failure: Enabled"
+Write-Host "Logs Directory: $logsDir"
 Write-Host "Deployment Duration: $([math]::Round($deployDuration, 2)) seconds"
+Write-Host ""
+Write-Host "Service Management Commands:" -ForegroundColor Cyan
+Write-Host "  View Logs:    Get-Content '$logFile' -Tail 50 -Wait" -ForegroundColor Yellow
+Write-Host "  Stop Service: Stop-Service -Name $ServiceName" -ForegroundColor Yellow
+Write-Host "  Start Service: Start-Service -Name $ServiceName" -ForegroundColor Yellow
+Write-Host "  Service Status: Get-Service -Name $ServiceName" -ForegroundColor Yellow
 Write-Host ""
 
 # Return deployment metrics as JSON for benchmarking
