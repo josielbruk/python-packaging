@@ -145,6 +145,35 @@ MIGRATIONS = {
     1: apply_migration_v1,
     2: apply_migration_v2,
     3: apply_migration_v3,
+}
+
+TARGET_VERSION = max(MIGRATIONS.keys())
+
+
+def main():
+    """Run database migrations"""
+    db_path = get_database_path()
+    print(f"Database path: {db_path}")
+
+    # Create parent directory if needed
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # Connect to database
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys = ON")  # Enable foreign key constraints
+
+    try:
+        # Ensure schema version table exists
+        create_schema_version_table(conn)
+
+        # Get current version
+        current_version = get_schema_version(conn)
+        print(f"Current schema version: {current_version}")
+        print(f"Target schema version: {TARGET_VERSION}")
+
+        if current_version >= TARGET_VERSION:
+            print("✓ Database is up to date")
+            return 0
 
         # Apply pending migrations
         print(f"Applying {TARGET_VERSION - current_version} migration(s)...")
