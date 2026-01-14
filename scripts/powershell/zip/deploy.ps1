@@ -182,7 +182,7 @@ try {
 if (-not $nssmExe) {
     $nssmDir = Join-Path $BaseInstallPath "tools\nssm"
     $localNssm = Join-Path $nssmDir "nssm.exe"
-    
+
     if (Test-Path $localNssm) {
         $nssmExe = $localNssm
         Write-Host "Found NSSM in local installation: $nssmExe" -ForegroundColor Green
