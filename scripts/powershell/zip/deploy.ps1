@@ -163,32 +163,50 @@ if (Test-Path $appScript) {
     exit 1
 }
 
-# Step 6: Install/Update NSSM (Non-Sucking Service Manager)
-Write-Host "`nStep 6: Installing NSSM..." -ForegroundColor Yellow
+# Step 6: Locate or Install NSSM (Non-Sucking Service Manager)
+Write-Host "`nStep 6: Locating NSSM..." -ForegroundColor Yellow
 
-$nssmDir = Join-Path $BaseInstallPath "tools\nssm"
-$nssmExe = Join-Path $nssmDir "nssm.exe"
+# First, check if NSSM is available in PATH (system-wide installation)
+$nssmExe = $null
+try {
+    $nssmCommand = Get-Command nssm.exe -ErrorAction SilentlyContinue
+    if ($nssmCommand) {
+        $nssmExe = $nssmCommand.Source
+        Write-Host "Found NSSM in system PATH: $nssmExe" -ForegroundColor Green
+    }
+} catch {
+    # NSSM not in PATH
+}
 
-if (-not (Test-Path $nssmExe)) {
-    Write-Host "Downloading NSSM..." -ForegroundColor Yellow
+# If not found in PATH, check local installation
+if (-not $nssmExe) {
+    $nssmDir = Join-Path $BaseInstallPath "tools\nssm"
+    $localNssm = Join-Path $nssmDir "nssm.exe"
+    
+    if (Test-Path $localNssm) {
+        $nssmExe = $localNssm
+        Write-Host "Found NSSM in local installation: $nssmExe" -ForegroundColor Green
+    } else {
+        # Download NSSM to local directory
+        Write-Host "NSSM not found, downloading..." -ForegroundColor Yellow
 
-    $nssmUrl = "https://nssm.cc/ci/nssm-2.24-101-g897c7ad.zip"
-    $nssmZip = Join-Path $env:TEMP "nssm.zip"
-    $nssmExtract = Join-Path $env:TEMP "nssm-extract"
+        $nssmUrl = "https://nssm.cc/ci/nssm-2.24-101-g897c7ad.zip"
+        $nssmZip = Join-Path $env:TEMP "nssm.zip"
+        $nssmExtract = Join-Path $env:TEMP "nssm-extract"
 
-    Invoke-WebRequest -Uri $nssmUrl -OutFile $nssmZip -UseBasicParsing
-    Expand-Archive -Path $nssmZip -DestinationPath $nssmExtract -Force
+        Invoke-WebRequest -Uri $nssmUrl -OutFile $nssmZip -UseBasicParsing
+        Expand-Archive -Path $nssmZip -DestinationPath $nssmExtract -Force
 
-    # Copy the appropriate version (64-bit)
-    New-Item -ItemType Directory -Path $nssmDir -Force | Out-Null
-    Copy-Item -Path "$nssmExtract\nssm-*\win64\nssm.exe" -Destination $nssmExe -Force
+        # Copy the appropriate version (64-bit)
+        New-Item -ItemType Directory -Path $nssmDir -Force | Out-Null
+        Copy-Item -Path "$nssmExtract\nssm-*\win64\nssm.exe" -Destination $localNssm -Force
 
-    # Cleanup
-    Remove-Item -Path $nssmZip, $nssmExtract -Recurse -Force -ErrorAction SilentlyContinue
+        # Cleanup
+        Remove-Item -Path $nssmZip, $nssmExtract -Recurse -Force -ErrorAction SilentlyContinue
 
-    Write-Host "NSSM installed successfully" -ForegroundColor Green
-} else {
-    Write-Host "NSSM already installed" -ForegroundColor Green
+        $nssmExe = $localNssm
+        Write-Host "NSSM installed successfully to: $nssmExe" -ForegroundColor Green
+    }
 }
 
 # Step 7: Configure logging
