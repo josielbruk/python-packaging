@@ -125,7 +125,7 @@ def get_recent_studies(limit=10):
 
 
 def record_deployment(version, method='manual', notes=None):
-    """Record a deployment in history"""
+    """Record a deployment in history (legacy table)"""
     query = """
         INSERT INTO deployment_history (version, deployment_method, notes)
         VALUES (?, ?, ?)
@@ -134,7 +134,7 @@ def record_deployment(version, method='manual', notes=None):
 
 
 def get_deployment_history(limit=10):
-    """Get recent deployment history"""
+    """Get recent deployment history (legacy table)"""
     query = """
         SELECT * FROM deployment_history
         ORDER BY deployed_at DESC
@@ -144,11 +144,125 @@ def get_deployment_history(limit=10):
 
 
 def get_current_deployment():
-    """Get the most recent deployment"""
+    """Get the most recent deployment (legacy table)"""
     query = """
         SELECT * FROM deployment_history
         ORDER BY deployed_at DESC
         LIMIT 1
+    """
+    rows = execute_query(query)
+    return rows[0] if rows else None
+
+
+# Enhanced deployment metrics functions
+
+def start_deployment_tracking(version, previous_version=None, hostname=None, 
+                             os_version=None, python_version=None, method='manual'):
+    """Start tracking a new deployment - returns deployment_id"""
+    from datetime import datetime
+    
+    query = """
+        INSERT INTO deployment_metrics (
+            version, previous_version, deployment_started_at,
+            hostname, os_version, python_version,
+            deployment_method, deployment_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'in-progress')
+    """
+    
+    started_at = datetime.now().isoformat()
+    with get_connection() as conn:
+        cursor = conn.execute(query, (
+            version, previous_version, started_at,
+            hostname, os_version, python_version, method
+        ))
+        conn.commit()
+        return cursor.lastrowid
+
+
+def update_deployment_phase(deployment_id, **kwargs):
+    """Update deployment phase timings and status"""
+    # Build dynamic UPDATE query
+    fields = []
+    values = []
+    
+    for key, value in kwargs.items():
+        fields.append(f"{key} = ?")
+        values.append(value)
+    
+    if not fields:
+        return
+    
+    values.append(deployment_id)
+    query = f"UPDATE deployment_metrics SET {', '.join(fields)} WHERE id = ?"
+    
+    return execute_write(query, tuple(values))
+
+
+def complete_deployment(deployment_id, status='success', error_message=None,
+                       total_duration=None, downtime_duration=None,
+                       health_check_success=False, health_check_duration=None,
+                       time_to_healthy=None):
+    """Mark deployment as complete with final metrics"""
+    from datetime import datetime
+    
+    query = """
+        UPDATE deployment_metrics
+        SET deployment_completed_at = ?,
+            deployment_status = ?,
+            error_message = ?,
+            total_duration = ?,
+            downtime_duration = ?,
+            health_check_success = ?,
+            health_check_duration = ?,
+            time_to_healthy = ?
+        WHERE id = ?
+    """
+    
+    completed_at = datetime.now().isoformat()
+    return execute_write(query, (
+        completed_at, status, error_message,
+        total_duration, downtime_duration,
+        1 if health_check_success else 0,
+        health_check_duration, time_to_healthy,
+        deployment_id
+    ))
+
+
+def get_deployment_metrics(limit=10):
+    """Get recent deployment metrics"""
+    query = """
+        SELECT * FROM deployment_metrics
+        ORDER BY deployment_started_at DESC
+        LIMIT ?
+    """
+    return execute_query(query, (limit,))
+
+
+def get_latest_deployment_metrics():
+    """Get the most recent deployment metrics"""
+    query = """
+        SELECT * FROM deployment_metrics
+        ORDER BY deployment_started_at DESC
+        LIMIT 1
+    """
+    rows = execute_query(query)
+    return rows[0] if rows else None
+
+
+def get_deployment_statistics():
+    """Get aggregate deployment statistics"""
+    query = """
+        SELECT 
+            COUNT(*) as total_deployments,
+            AVG(total_duration) as avg_duration,
+            AVG(downtime_duration) as avg_downtime,
+            MIN(total_duration) as min_duration,
+            MAX(total_duration) as max_duration,
+            SUM(CASE WHEN deployment_status = 'success' THEN 1 ELSE 0 END) as successful_deployments,
+            SUM(CASE WHEN deployment_status = 'failed' THEN 1 ELSE 0 END) as failed_deployments,
+            AVG(CASE WHEN health_check_success = 1 THEN health_check_duration END) as avg_health_check_time
+        FROM deployment_metrics
+        WHERE deployment_status != 'in-progress'
     """
     rows = execute_query(query)
     return rows[0] if rows else None

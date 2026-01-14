@@ -140,11 +140,80 @@ def apply_migration_v3(conn):
     print("  [OK] Migration v3 completed")
 
 
+def apply_migration_v4(conn):
+    """Enhanced deployment metrics - VM info, phase timing, health verification"""
+    print("  Applying migration v4: Enhanced deployment metrics")
+
+    # Create new enhanced table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS deployment_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            
+            -- Version and timing
+            version TEXT NOT NULL,
+            previous_version TEXT,
+            deployment_started_at TEXT NOT NULL,
+            deployment_completed_at TEXT,
+            
+            -- VM Information
+            hostname TEXT,
+            os_version TEXT,
+            python_version TEXT,
+            
+            -- Deployment phases (seconds)
+            extract_duration REAL,
+            venv_rebuild_duration REAL,
+            migration_duration REAL,
+            cutover_duration REAL,
+            total_duration REAL,
+            downtime_duration REAL,
+            
+            -- Health verification
+            health_check_success INTEGER DEFAULT 0,
+            health_check_duration REAL,
+            time_to_healthy TEXT,
+            
+            -- Deployment info
+            deployment_method TEXT DEFAULT 'manual',
+            deployment_status TEXT DEFAULT 'in-progress',
+            error_message TEXT,
+            notes TEXT,
+            
+            -- Indexes for common queries
+            UNIQUE(version, deployment_started_at)
+        )
+    """)
+
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_metrics_version
+        ON deployment_metrics(version)
+    """)
+
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_metrics_started
+        ON deployment_metrics(deployment_started_at)
+    """)
+
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_metrics_status
+        ON deployment_metrics(deployment_status)
+    """)
+
+    conn.execute("""
+        INSERT INTO schema_version (version, description)
+        VALUES (4, 'Enhanced deployment metrics with VM info and phase timing')
+    """)
+
+    conn.commit()
+    print("  [OK] Migration v4 completed")
+
+
 # Migration registry - add new migrations here in order
 MIGRATIONS = {
     1: apply_migration_v1,
     2: apply_migration_v2,
     3: apply_migration_v3,
+    4: apply_migration_v4,
 }
 
 TARGET_VERSION = max(MIGRATIONS.keys())
