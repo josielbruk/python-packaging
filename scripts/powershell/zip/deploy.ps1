@@ -30,6 +30,7 @@ $ErrorActionPreference = "Stop"
 
 # Start timing and capture phase durations
 $deployStart = Get-Date
+$deploymentStartTime = $deployStart
 $phaseTimings = @{}
 
 # Initialize deployment log file

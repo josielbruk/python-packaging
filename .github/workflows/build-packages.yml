@@ -125,7 +125,6 @@ jobs:
           # Copy application files
           Write-Host "Copying application files..."
           Copy-Item -Path "src" -Destination "$buildDir\src" -Recurse
-          Copy-Item -Path ".venv" -Destination "$buildDir\.venv" -Recurse
           Copy-Item -Path "pyproject.toml" -Destination "$buildDir\" -Force
 
           # Copy config template

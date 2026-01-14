@@ -145,6 +145,10 @@ MIGRATIONS = {
     1: apply_migration_v1,
     2: apply_migration_v2,
     3: apply_migration_v3,
+}
+
+TARGET_VERSION = max(MIGRATIONS.keys())
+
 
 def main():
     """Run database migrations"""
