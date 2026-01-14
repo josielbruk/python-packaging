@@ -55,9 +55,15 @@ Write-Host "PyInstaller is available" -ForegroundColor Green
 
 # Step 2: Install dependencies
 Write-Host "`nStep 2: Installing application dependencies..." -ForegroundColor Yellow
-& python -m pip install -r ..\common\requirements.txt --quiet
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning "Some dependencies may have failed to install"
+$repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+$requirementsPath = Join-Path $repoRoot "src\requirements.txt"
+if (Test-Path $requirementsPath) {
+    & python -m pip install -r $requirementsPath --quiet
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Some dependencies may have failed to install"
+    }
+} else {
+    Write-Warning "Requirements file not found at: $requirementsPath"
 }
 
 Write-Host "Dependencies installed" -ForegroundColor Green

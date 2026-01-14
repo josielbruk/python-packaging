@@ -73,7 +73,8 @@ Copy-Item -Path $ExePath -Destination $targetExe -Force
 Write-Host "Executable deployed successfully" -ForegroundColor Green
 
 # Step 4: Copy config file
-$configSource = Join-Path (Split-Path $PSScriptRoot -Parent) "common\config.yaml"
+$repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+$configSource = Join-Path $repoRoot "src\config.yaml"
 $configDest = Join-Path $InstallPath "config.yaml"
 if (Test-Path $configSource) {
     Copy-Item -Path $configSource -Destination $configDest -Force

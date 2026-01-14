@@ -14,16 +14,17 @@ Usage:
 import os
 from pathlib import Path
 
-# Get the common directory path
-common_dir = Path('..') / 'common'
+# Get the repository root directory (3 levels up from scripts/powershell/exe)
+repo_root = Path(__file__).parent.parent.parent.parent
+src_dir = repo_root / 'src'
 
 # Analysis: Scan the script and dependencies
 a = Analysis(
-    [str(common_dir / 'mock_service.py')],
+    [str(src_dir / 'mock_service.py')],
     pathex=[],
     binaries=[],
     datas=[
-        (str(common_dir / 'config.yaml'), '.'),  # Include config file
+        (str(src_dir / 'config.yaml'), '.'),  # Include config file
     ],
     hiddenimports=[
         'pydantic',

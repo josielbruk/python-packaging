@@ -86,7 +86,7 @@ jobs:
 
           Write-Host "Installing dependencies..."
           .\.venv\Scripts\Activate.ps1
-          uv pip install -e .
+          uv pip install -r src\requirements.txt
 
           Write-Host "Virtual environment created successfully"
 

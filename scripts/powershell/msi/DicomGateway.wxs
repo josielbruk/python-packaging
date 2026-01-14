@@ -33,13 +33,13 @@
     <!-- Component Group -->
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <Component Id="MainExecutable" Guid="*">
-        <File Id="MockServicePy" Source="..\common\mock_service.py" KeyPath="yes" />
+        <File Id="MockServicePy" Source="..\..\..\src\mock_service.py" KeyPath="yes" />
       </Component>
       <Component Id="ConfigFile" Guid="*">
-        <File Id="ConfigYaml" Source="..\common\config.yaml" KeyPath="yes" />
+        <File Id="ConfigYaml" Source="..\..\..\src\config.yaml" KeyPath="yes" />
       </Component>
       <Component Id="Requirements" Guid="*">
-        <File Id="RequirementsTxt" Source="..\common\requirements.txt" KeyPath="yes" />
+        <File Id="RequirementsTxt" Source="..\..\..\src\requirements.txt" KeyPath="yes" />
       </Component>
     </ComponentGroup>
 
