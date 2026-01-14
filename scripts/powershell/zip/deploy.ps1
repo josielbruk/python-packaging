@@ -281,8 +281,34 @@ if (Test-Path $appScript) {
     exit 1
 }
 
-# Step 7: Locate or Install NSSM (Non-Sucking Service Manager)
-Write-Host "`nStep 7: Locating NSSM..." -ForegroundColor Yellow
+# Step 7: Cleanup old versions (keep last 3)
+Write-Host "`nStep 7: Cleaning up old versions..." -ForegroundColor Yellow
+
+$releasesDir = Join-Path $BaseInstallPath "releases"
+$versions = Get-ChildItem -Path $releasesDir -Directory | Sort-Object CreationTime -Descending
+
+if ($versions.Count -gt 3) {
+    $versionsToDelete = $versions | Select-Object -Skip 3
+    
+    foreach ($versionDir in $versionsToDelete) {
+        # Only delete if it's not currently in use
+        $currentTarget = (Get-Item $currentJunction).Target[0]
+        $previousTarget = if (Test-Path $previousJunction) { (Get-Item $previousJunction).Target[0] } else { $null }
+        
+        if ($versionDir.FullName -ne $currentTarget -and $versionDir.FullName -ne $previousTarget) {
+            Write-Host "  Removing old version: $($versionDir.Name)" -ForegroundColor Gray
+            Remove-Item -Path $versionDir.FullName -Recurse -Force
+        }
+    }
+    
+    $remainingCount = (Get-ChildItem -Path $releasesDir -Directory).Count
+    Write-Host "Cleanup complete - $remainingCount version(s) retained" -ForegroundColor Green
+} else {
+    Write-Host "No cleanup needed - only $($versions.Count) version(s) exist" -ForegroundColor Green
+}
+
+# Step 8: Locate or Install NSSM (Non-Sucking Service Manager)
+Write-Host "`nStep 8: Locating NSSM..." -ForegroundColor Yellow
 
 # First, check if NSSM is available in PATH (system-wide installation)
 $nssmExe = $null
@@ -327,8 +353,8 @@ if (-not $nssmExe) {
     }
 }
 
-# Step 8: Configure logging
-Write-Host "`nStep 8: Configuring logging..." -ForegroundColor Yellow
+# Step 9: Configure logging
+Write-Host "`nStep 9: Configuring logging..." -ForegroundColor Yellow
 
 $logsDir = Join-Path $BaseInstallPath "logs"
 if (-not (Test-Path $logsDir)) {
@@ -340,8 +366,8 @@ $errorLogFile = Join-Path $logsDir "$ServiceName-error-$(Get-Date -Format 'yyyy-
 
 Write-Host "Log directory: $logsDir" -ForegroundColor Green
 
-# Step 9: Install/Update Windows Service using NSSM
-Write-Host "`nStep 9: Configuring Windows Service..." -ForegroundColor Yellow
+# Step 10: Install/Update Windows Service using NSSM
+Write-Host "`nStep 10: Configuring Windows Service..." -ForegroundColor Yellow
 
 $startScript = Join-Path $currentJunction "start-service.bat"
 
@@ -393,8 +419,8 @@ if ($existingService) {
     Write-Host "Service created successfully" -ForegroundColor Green
 }
 
-# Step 10: Start the service
-Write-Host "`nStep 10: Starting service..." -ForegroundColor Yellow
+# Step 11: Start the service
+Write-Host "`nStep 11: Starting service..." -ForegroundColor Yellow
 
 & $nssmExe start $ServiceName
 Start-Sleep -Seconds 3
