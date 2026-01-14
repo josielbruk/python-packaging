@@ -32,13 +32,52 @@ $ErrorActionPreference = "Stop"
 $deployStart = Get-Date
 $phaseTimings = @{}
 
+# Initialize deployment log file
+$deploymentLogsDir = Join-Path $BaseInstallPath "logs\deployments"
+if (-not (Test-Path $deploymentLogsDir)) {
+    New-Item -ItemType Directory -Path $deploymentLogsDir -Force | Out-Null
+}
+$deploymentLogFile = Join-Path $deploymentLogsDir "deployment-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+
+function Write-DeploymentLog {
+    param(
+        [string]$Message,
+        [string]$Level = "INFO"
+    )
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+    $logEntry = "[$timestamp] [$Level] $Message"
+    Add-Content -Path $deploymentLogFile -Value $logEntry
+    
+    # Also write to console with appropriate color
+    switch ($Level) {
+        "ERROR" { Write-Host $logEntry -ForegroundColor Red }
+        "WARNING" { Write-Host $logEntry -ForegroundColor Yellow }
+        "SUCCESS" { Write-Host $logEntry -ForegroundColor Green }
+        default { Write-Host $logEntry -ForegroundColor Gray }
+    }
+}
+
+Write-DeploymentLog "========================================" "INFO"
+Write-DeploymentLog "Deployment Started" "INFO"
+Write-DeploymentLog "========================================" "INFO"
+Write-DeploymentLog "Script: $($MyInvocation.MyCommand.Path)" "INFO"
+Write-DeploymentLog "User: $env:USERNAME" "INFO"
+Write-DeploymentLog "Computer: $env:COMPUTERNAME" "INFO"
+Write-DeploymentLog "Base Path: $BaseInstallPath" "INFO"
+Write-DeploymentLog "Service: $ServiceName" "INFO"
+
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Deploying ZIP Package (Blue/Green)" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "Deployment log: $deploymentLogFile" -ForegroundColor Cyan
+Write-Host ""
 
 # Download ZIP if PackageUrl is provided
 if ($PackageUrl) {
     Write-Host "Downloading package from: $PackageUrl" -ForegroundColor Yellow
+    Write-DeploymentLog "Package URL: $PackageUrl" "INFO"
+    Write-DeploymentLog "Starting package download..." "INFO"
+    
     $tempDir = Join-Path $env:TEMP "dicom-gateway-deploy"
     if (-not (Test-Path $tempDir)) {
         New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
@@ -47,9 +86,13 @@ if ($PackageUrl) {
     $ZipPath = Join-Path $tempDir "package.zip"
 
     try {
+        $downloadStart = Get-Date
         Invoke-WebRequest -Uri $PackageUrl -OutFile $ZipPath -UseBasicParsing
+        $downloadDuration = ((Get-Date) - $downloadStart).TotalSeconds
         Write-Host "Package downloaded successfully" -ForegroundColor Green
+        Write-DeploymentLog "Package downloaded successfully (took $([math]::Round($downloadDuration, 2))s)" "SUCCESS"
     } catch {
+        Write-DeploymentLog "Failed to download package: $_" "ERROR"
         Write-Error "Failed to download package: $_"
         exit 1
     }
@@ -59,14 +102,21 @@ Write-Host "ZIP Path: $ZipPath"
 Write-Host "Base Install Path: $BaseInstallPath"
 Write-Host ""
 
+Write-DeploymentLog "ZIP Path: $ZipPath" "INFO"
+
 # Validate ZIP exists
 if (-not (Test-Path $ZipPath)) {
+    Write-DeploymentLog "ZIP file not found: $ZipPath" "ERROR"
     Write-Error "ZIP file not found: $ZipPath"
     exit 1
 }
 
+$zipSize = [math]::Round((Get-Item $ZipPath).Length / 1MB, 2)
+Write-DeploymentLog "ZIP file size: $zipSize MB" "INFO"
+
 # Step 1: Prepare directory structure
 Write-Host "Step 1: Preparing directory structure..." -ForegroundColor Yellow
+Write-DeploymentLog "STEP 1: Preparing directory structure" "INFO"
 
 $releasesDir = Join-Path $BaseInstallPath "releases"
 $sharedDir = Join-Path $BaseInstallPath "shared"
@@ -76,15 +126,18 @@ $logsDir = Join-Path $BaseInstallPath "logs"
 foreach ($dir in @($releasesDir, $sharedDir, $dataDir, $logsDir)) {
     if (-not (Test-Path $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Write-DeploymentLog "  Created directory: $dir" "INFO"
     }
 }
 
 Write-Host "Directory structure ready" -ForegroundColor Green
 Write-Host "  Data directory: $dataDir" -ForegroundColor Gray
+Write-DeploymentLog "STEP 1 COMPLETED: Directory structure ready" "SUCCESS"
 
 # Step 2: Extract package to new version directory
 Write-Host "`nStep 2: Extracting package..." -ForegroundColor Yellow
 Write-Host "  Service continues running during extraction..." -ForegroundColor Gray
+Write-DeploymentLog "STEP 2: Extracting package" "INFO"
 
 $extractStart = Get-Date
 
@@ -101,9 +154,11 @@ if (-not $Version) {
 }
 
 Write-Host "Detected version: $version" -ForegroundColor Green
+Write-DeploymentLog "  Detected version: $version" "INFO"
 
 # Extract to versioned directory
 $versionDir = Join-Path $releasesDir $version
+Write-DeploymentLog "  Extracting to: $versionDir" "INFO"
 if (Test-Path $versionDir) {
     Write-Host "Version directory exists, removing..." -ForegroundColor Yellow
     Remove-Item -Path $versionDir -Recurse -Force
@@ -117,10 +172,12 @@ $extractEnd = Get-Date
 $phaseTimings['extract'] = ($extractEnd - $extractStart).TotalSeconds
 
 Write-Host "Package extracted to: $versionDir" -ForegroundColor Green
+Write-DeploymentLog "STEP 2 COMPLETED: Package extracted (took $([math]::Round($phaseTimings['extract'], 2))s)" "SUCCESS"
 
 # Step 3: Rebuild virtual environment in new version (service still running)
 Write-Host "`nStep 3: Rebuilding virtual environment..." -ForegroundColor Yellow
 Write-Host "  Service continues running during venv rebuild..." -ForegroundColor Gray
+Write-DeploymentLog "STEP 3: Rebuilding virtual environment" "INFO"
 
 $venvStart = Get-Date
 
@@ -219,6 +276,7 @@ if (-not $pythonExe) {
 }
 
 Write-Host "Found Python at: $pythonExe" -ForegroundColor Green
+Write-DeploymentLog "  Found Python: $pythonExe" "INFO"
 
 # Create new virtual environment on target machine
 & $pythonExe -m venv $venvPath
@@ -238,10 +296,12 @@ $venvEnd = Get-Date
 $phaseTimings['venv'] = ($venvEnd - $venvStart).TotalSeconds
 
 Write-Host "Dependencies installed" -ForegroundColor Green
+Write-DeploymentLog "STEP 3 COMPLETED: Virtual environment rebuilt (took $([math]::Round($phaseTimings['venv'], 2))s)" "SUCCESS"
 
 # Step 4: Run database migrations in new version (service still running)
 Write-Host "`nStep 4: Database management..." -ForegroundColor Yellow
 Write-Host "  Service continues running during migrations..." -ForegroundColor Gray
+Write-DeploymentLog "STEP 4: Running database migrations" "INFO"
 
 $migrationStart = Get-Date
 $dbPath = Join-Path $dataDir "gateway.db"
@@ -272,8 +332,10 @@ if (Test-Path $migrationScript) {
         & $venvPython $migrationScript
         if ($LASTEXITCODE -eq 0) {
             Write-Host "Database migrations completed successfully" -ForegroundColor Green
+            Write-DeploymentLog "  Database migrations completed successfully" "SUCCESS"
         } else {
             Write-Warning "Database migration returned non-zero exit code: $LASTEXITCODE"
+            Write-DeploymentLog "  Database migration returned non-zero exit code: $LASTEXITCODE" "WARNING"
         }
     } catch {
         Write-Warning "Failed to run database migrations: $_"
@@ -291,28 +353,36 @@ if (Test-Path $migrationScript) {
 
 $migrationEnd = Get-Date
 $phaseTimings['migration'] = ($migrationEnd - $migrationStart).TotalSeconds
+Write-DeploymentLog "STEP 4 COMPLETED: Database management (took $([math]::Round($phaseTimings['migration'], 2))s)" "SUCCESS"
 
 # ============================================
 # CRITICAL SECTION: Minimize Downtime
 # ============================================
+Write-DeploymentLog "========================================" "INFO"
+Write-DeploymentLog "CRITICAL SECTION: Service Cutover Starting" "INFO"
+Write-DeploymentLog "========================================" "INFO"
 
 # Step 5: Stop service (beginning of critical section)
 Write-Host "`n========================================" -ForegroundColor Red
 Write-Host "CRITICAL SECTION: Service Cutover" -ForegroundColor Red
 Write-Host "========================================" -ForegroundColor Red
 Write-Host "Step 5: Stopping service..." -ForegroundColor Yellow
+Write-DeploymentLog "STEP 5: Stopping service" "INFO"
 
 $cutoverStart = Get-Date
 $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($service -and $service.Status -eq 'Running') {
     Stop-Service -Name $ServiceName -Force
     Write-Host "Service stopped" -ForegroundColor Green
+    Write-DeploymentLog "  Service stopped successfully" "SUCCESS"
 } else {
     Write-Host "Service not running" -ForegroundColor Yellow
+    Write-DeploymentLog "  Service was not running" "INFO"
 }
 
 # Step 6: Switch junction (atomic operation)
 Write-Host "`nStep 6: Switching junction..." -ForegroundColor Yellow
+Write-DeploymentLog "STEP 6: Switching junction" "INFO"
 
 $currentJunction = Join-Path $BaseInstallPath "current"
 $previousJunction = Join-Path $BaseInstallPath "previous"
@@ -342,9 +412,11 @@ if (Test-Path $currentJunction) {
 # Create new current junction pointing to new version
 New-Item -ItemType Junction -Path $currentJunction -Target $versionDir -Force | Out-Null
 Write-Host "Junction switched to: $version" -ForegroundColor Green
+Write-DeploymentLog "  Junction switched to version: $version" "SUCCESS"
 
 # Step 7: Start service (end of critical section)
 Write-Host "`nStep 7: Starting service..." -ForegroundColor Yellow
+Write-DeploymentLog "STEP 7: Starting service" "INFO"
 
 # Locate NSSM quickly for service start
 $nssmExe = $null
@@ -364,11 +436,14 @@ if ($nssmExe -and $service) {
     $serviceStatus = Get-Service -Name $ServiceName
     if ($serviceStatus.Status -eq 'Running') {
         Write-Host "Service started successfully" -ForegroundColor Green
+        Write-DeploymentLog "  Service started successfully" "SUCCESS"
     } else {
         Write-Warning "Service status: $($serviceStatus.Status)"
+        Write-DeploymentLog "  Service status: $($serviceStatus.Status)" "WARNING"
     }
 } else {
     Write-Host "Service will be configured later" -ForegroundColor Yellow
+    Write-DeploymentLog "  Service will be configured in Step 12" "INFO"
 }
 
 $cutoverEnd = Get-Date
@@ -379,12 +454,17 @@ Write-Host "========================================" -ForegroundColor Green
 Write-Host "Downtime: $([math]::Round($cutoverDuration, 2)) seconds" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 
+Write-DeploymentLog "========================================" "SUCCESS"
+Write-DeploymentLog "CRITICAL SECTION COMPLETED: Downtime $([math]::Round($cutoverDuration, 2)) seconds" "SUCCESS"
+Write-DeploymentLog "========================================" "SUCCESS"
+
 # ============================================
 # POST-DEPLOYMENT: Service is Running
 # ============================================
 
 # Step 8: Record comprehensive deployment metrics
 Write-Host "`nStep 8: Recording deployment metrics..." -ForegroundColor Yellow
+Write-DeploymentLog "STEP 8: Recording deployment metrics" "INFO"
 
 $dbPath = Join-Path $BaseInstallPath "data\gateway.db"
 $venvPython = Join-Path $currentJunction ".venv\Scripts\python.exe"
@@ -525,6 +605,11 @@ complete_deployment(
 "@
         $completeScript | & $venvPython -c "exec(input())" | Out-Null
         Write-Host "Deployment metrics recorded successfully" -ForegroundColor Green
+        Write-DeploymentLog "  Deployment metrics recorded (ID: $deploymentId)" "SUCCESS"
+        Write-DeploymentLog "  Health check: $(if ($healthCheckSuccess) {'PASSED'} else {'FAILED'})" "INFO"
+        if ($healthCheckSuccess) {
+            Write-DeploymentLog "  Time to healthy: $([math]::Round($timeToHealthy, 2)) seconds" "INFO"
+        }
 
         # Show metrics summary
         Write-Host "`nDeployment Metrics Summary:" -ForegroundColor Cyan
@@ -557,6 +642,7 @@ try {
 
 # Step 9: Cleanup old versions (keep last 3)
 Write-Host "`nStep 9: Cleaning up old versions..." -ForegroundColor Yellow
+Write-DeploymentLog "STEP 9: Cleaning up old versions" "INFO"
 
 $releasesDir = Join-Path $BaseInstallPath "releases"
 $versions = Get-ChildItem -Path $releasesDir -Directory | Sort-Object CreationTime -Descending
@@ -571,18 +657,22 @@ if ($versions.Count -gt 3) {
 
         if ($versionDir.FullName -ne $currentTarget -and $versionDir.FullName -ne $previousTarget) {
             Write-Host "  Removing old version: $($versionDir.Name)" -ForegroundColor Gray
+            Write-DeploymentLog "  Removing old version: $($versionDir.Name)" "INFO"
             Remove-Item -Path $versionDir.FullName -Recurse -Force
         }
     }
 
     $remainingCount = (Get-ChildItem -Path $releasesDir -Directory).Count
     Write-Host "Cleanup complete - $remainingCount version(s) retained" -ForegroundColor Green
+    Write-DeploymentLog "STEP 9 COMPLETED: Cleanup complete - $remainingCount version(s) retained" "SUCCESS"
 } else {
     Write-Host "No cleanup needed - only $($versions.Count) version(s) exist" -ForegroundColor Green
+    Write-DeploymentLog "STEP 9 COMPLETED: No cleanup needed - $($versions.Count) versions exist" "SUCCESS"
 }
 
 # Step 10: Locate or Install NSSM (Non-Sucking Service Manager)
 Write-Host "`nStep 10: Locating NSSM..." -ForegroundColor Yellow
+Write-DeploymentLog "STEP 10: Locating NSSM" "INFO"
 
 # First, check if NSSM is available in PATH (system-wide installation)
 $nssmExe = $null
@@ -591,6 +681,7 @@ try {
     if ($nssmCommand) {
         $nssmExe = $nssmCommand.Source
         Write-Host "Found NSSM in system PATH: $nssmExe" -ForegroundColor Green
+        Write-DeploymentLog "  Found NSSM in PATH: $nssmExe" "SUCCESS"
     }
 } catch {
     # NSSM not in PATH
@@ -629,6 +720,7 @@ if (-not $nssmExe) {
 
 # Step 11: Configure logging
 Write-Host "`nStep 11: Configuring logging..." -ForegroundColor Yellow
+Write-DeploymentLog "STEP 11: Configuring service logging" "INFO"
 
 $logsDir = Join-Path $BaseInstallPath "logs"
 if (-not (Test-Path $logsDir)) {
@@ -639,9 +731,11 @@ $logFile = Join-Path $logsDir "$ServiceName-$(Get-Date -Format 'yyyy-MM-dd').log
 $errorLogFile = Join-Path $logsDir "$ServiceName-error-$(Get-Date -Format 'yyyy-MM-dd').log"
 
 Write-Host "Log directory: $logsDir" -ForegroundColor Green
+Write-DeploymentLog "STEP 11 COMPLETED: Log directory configured: $logsDir" "SUCCESS"
 
 # Step 12: Configure Windows Service (if needed)
 Write-Host "`nStep 12: Configuring Windows Service..." -ForegroundColor Yellow
+Write-DeploymentLog "STEP 12: Configuring Windows Service" "INFO"
 
 $startScript = Join-Path $currentJunction "start-service.bat"
 
@@ -714,11 +808,22 @@ if ($serviceStatus -and $serviceStatus.Status -eq 'Running') {
     Write-Host "  Startup Type: $($serviceStatus.StartType)" -ForegroundColor Cyan
     Write-Host "  Log File: $logFile" -ForegroundColor Cyan
     Write-Host "  Error Log: $errorLogFile" -ForegroundColor Cyan
+    Write-DeploymentLog "STEP 12 COMPLETED: Service configured and running" "SUCCESS"
 }
 
 # Calculate deployment time
 $deployEnd = Get-Date
 $deployDuration = ($deployEnd - $deployStart).TotalSeconds
+
+Write-DeploymentLog "========================================" "INFO"
+Write-DeploymentLog "DEPLOYMENT COMPLETED SUCCESSFULLY" "SUCCESS"
+Write-DeploymentLog "========================================" "INFO"
+Write-DeploymentLog "Version: $version" "INFO"
+Write-DeploymentLog "Total Duration: $([math]::Round($deployDuration, 2)) seconds" "INFO"
+Write-DeploymentLog "Service Downtime: $([math]::Round($cutoverDuration, 2)) seconds" "INFO"
+Write-DeploymentLog "Extract: $([math]::Round($phaseTimings['extract'], 2))s | venv: $([math]::Round($phaseTimings['venv'], 2))s | Migration: $([math]::Round($phaseTimings['migration'], 2))s | Cutover: $([math]::Round($phaseTimings['cutover'], 2))s" "INFO"
+Write-DeploymentLog "Deployment log saved to: $deploymentLogFile" "INFO"
+Write-DeploymentLog "========================================" "INFO"
 
 Write-Host "`n========================================" -ForegroundColor Green
 Write-Host "ZIP Deployment Complete!" -ForegroundColor Green
@@ -730,6 +835,7 @@ Write-Host "Service Status: Running"
 Write-Host "Auto-Start: Enabled"
 Write-Host "Auto-Restart on Failure: Enabled"
 Write-Host "Logs Directory: $logsDir"
+Write-Host "Deployment Log: $deploymentLogFile" -ForegroundColor Cyan
 Write-Host "Total Deployment Duration: $([math]::Round($deployDuration, 2)) seconds" -ForegroundColor Cyan
 Write-Host "Service Downtime: $([math]::Round($cutoverDuration, 2)) seconds" -ForegroundColor Green
 Write-Host ""
