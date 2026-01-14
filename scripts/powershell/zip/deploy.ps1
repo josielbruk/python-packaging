@@ -47,7 +47,7 @@ function Write-DeploymentLog {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
     $logEntry = "[$timestamp] [$Level] $Message"
     Add-Content -Path $deploymentLogFile -Value $logEntry
-    
+
     # Also write to console with appropriate color
     switch ($Level) {
         "ERROR" { Write-Host $logEntry -ForegroundColor Red }
@@ -77,7 +77,7 @@ if ($PackageUrl) {
     Write-Host "Downloading package from: $PackageUrl" -ForegroundColor Yellow
     Write-DeploymentLog "Package URL: $PackageUrl" "INFO"
     Write-DeploymentLog "Starting package download..." "INFO"
-    
+
     $tempDir = Join-Path $env:TEMP "dicom-gateway-deploy"
     if (-not (Test-Path $tempDir)) {
         New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
@@ -462,9 +462,9 @@ Write-DeploymentLog "========================================" "SUCCESS"
 # POST-DEPLOYMENT: Service is Running
 # ============================================
 
-# Step 8: Record comprehensive deployment metrics
-Write-Host "`nStep 8: Recording deployment metrics..." -ForegroundColor Yellow
-Write-DeploymentLog "STEP 8: Recording deployment metrics" "INFO"
+# Step 8: Record deployment in database
+Write-Host "`nStep 8: Recording deployment..." -ForegroundColor Yellow
+Write-DeploymentLog "STEP 8: Recording deployment in database" "INFO"
 
 $dbPath = Join-Path $BaseInstallPath "data\gateway.db"
 $venvPython = Join-Path $currentJunction ".venv\Scripts\python.exe"
@@ -475,170 +475,50 @@ $osVersion = (Get-CimInstance Win32_OperatingSystem).Caption
 $pythonVersionOutput = & $pythonExe --version 2>&1
 $pythonVersionFull = $pythonVersionOutput -replace 'Python ', ''
 
-# Get previous version from previous junction
-$previousVersion = 'null'
-if (Test-Path $previousJunction) {
-    $prevTarget = (Get-Item $previousJunction).Target
-    if ($prevTarget -is [array]) {
-        $prevTarget = $prevTarget[0]
-    }
-    if ($prevTarget) {
-        $previousVersion = "'$(Split-Path $prevTarget -Leaf)'"
-    }
-}
-
-# Get phase durations
+# Get phase durations for logging
 $extractDuration = if ($phaseTimings.ContainsKey('extract')) { $phaseTimings['extract'] } else { 0 }
 $venvDuration = if ($phaseTimings.ContainsKey('venv')) { $phaseTimings['venv'] } else { 0 }
 $migrationDuration = if ($phaseTimings.ContainsKey('migration')) { $phaseTimings['migration'] } else { 0 }
+$cutoverDuration = if ($phaseTimings.ContainsKey('cutover')) { $phaseTimings['cutover'] } else { 0 }
+$totalDuration = ((Get-Date) - $deploymentStartTime).TotalSeconds
 
-# Start deployment tracking
-Write-Host "  Initializing metrics tracking..." -ForegroundColor Gray
-$trackingScript = @"
-import sys
-import os
-from datetime import datetime
-sys.path.insert(0, r'$currentJunction\src')
-os.environ['DATABASE_PATH'] = r'$dbPath'
-
-from db import start_deployment_tracking
-
-deployment_id = start_deployment_tracking(
-    version='$version',
-    previous_version=$previousVersion,
-    hostname='$hostname',
-    os_version='$osVersion',
-    python_version='$pythonVersionFull',
-    method='azure-arc'
-)
-print(f'deployment_id={deployment_id}')
-"@
-
-try {
-    $trackingOutput = $trackingScript | & $venvPython -c "exec(input())"
-    if ($trackingOutput -match 'deployment_id=(\d+)') {
-        $deploymentId = $matches[1]
-        Write-Host "  Deployment ID: $deploymentId" -ForegroundColor Cyan
-
-        # Update with phase timings
-        $phaseUpdateScript = @"
+# Record deployment in database (simple: version + timestamp)
+$recordScript = @"
 import sys
 import os
 sys.path.insert(0, r'$currentJunction\src')
 os.environ['DATABASE_PATH'] = r'$dbPath'
 
-from db import update_deployment_phase
-
-update_deployment_phase(
-    $deploymentId,
-    extract_duration=$extractDuration,
-    venv_rebuild_duration=$venvDuration,
-    migration_duration=$migrationDuration,
-    cutover_duration=$cutoverDuration
-)
-"@
-        $phaseUpdateScript | & $venvPython -c "exec(input())" | Out-Null
-
-        # Perform health check to verify version
-        Write-Host "  Verifying health endpoint..." -ForegroundColor Gray
-        $healthCheckStart = Get-Date
-        $healthCheckSuccess = $false
-        $healthCheckDuration = 0
-        $timeToHealthy = 'null'
-
-        # Wait up to 30 seconds for service to respond with correct version
-        for ($i = 0; $i -lt 30; $i++) {
-            try {
-                $healthResponse = Invoke-RestMethod -Uri "http://localhost:8080/health" -Method Get -TimeoutSec 2 -ErrorAction Stop
-                if ($healthResponse.version -eq $version) {
-                    $healthCheckEnd = Get-Date
-                    $healthCheckDuration = ($healthCheckEnd - $healthCheckStart).TotalSeconds
-                    $timeToHealthy = ($healthCheckEnd - $cutoverStart).TotalSeconds
-                    $healthCheckSuccess = $true
-                    Write-Host "  Health check PASSED - Version: $version" -ForegroundColor Green
-                    Write-Host "  Time to healthy: $([math]::Round($timeToHealthy, 2)) seconds from service start" -ForegroundColor Cyan
-                    break
-                } else {
-                    if ($i -eq 0) {
-                        Write-Host "  Waiting for correct version (current: $($healthResponse.version))..." -ForegroundColor Gray
-                    }
-                }
-            } catch {
-                # Service not ready yet
-                if ($i -eq 0) {
-                    Write-Host "  Waiting for service to respond..." -ForegroundColor Gray
-                }
-            }
-            Start-Sleep -Seconds 1
-        }
-
-        if (-not $healthCheckSuccess) {
-            Write-Warning "  Health check did not return expected version within 30 seconds"
-            $healthCheckDuration = 30
-            $timeToHealthy = 'null'
-        }
-
-        # Complete deployment tracking
-        $deployEnd = Get-Date
-        $totalDuration = ($deployEnd - $deployStart).TotalSeconds
-
-        $deploymentStatus = if ($healthCheckSuccess) { 'success' } else { 'warning' }
-        $timeToHealthyStr = if ($timeToHealthy -ne 'null') { "'$timeToHealthy'" } else { 'null' }
-
-        $completeScript = @"
-import sys
-import os
-sys.path.insert(0, r'$currentJunction\src')
-os.environ['DATABASE_PATH'] = r'$dbPath'
-
-from db import complete_deployment
-
-complete_deployment(
-    $deploymentId,
-    status='$deploymentStatus',
-    total_duration=$totalDuration,
-    downtime_duration=$cutoverDuration,
-    health_check_success=$($healthCheckSuccess.ToString().ToLower()),
-    health_check_duration=$healthCheckDuration,
-    time_to_healthy=$timeToHealthyStr
-)
-"@
-        $completeScript | & $venvPython -c "exec(input())" | Out-Null
-        Write-Host "Deployment metrics recorded successfully" -ForegroundColor Green
-        Write-DeploymentLog "  Deployment metrics recorded (ID: $deploymentId)" "SUCCESS"
-        Write-DeploymentLog "  Health check: $(if ($healthCheckSuccess) {'PASSED'} else {'FAILED'})" "INFO"
-        if ($healthCheckSuccess) {
-            Write-DeploymentLog "  Time to healthy: $([math]::Round($timeToHealthy, 2)) seconds" "INFO"
-        }
-
-        # Show metrics summary
-        Write-Host "`nDeployment Metrics Summary:" -ForegroundColor Cyan
-        Write-Host "  Extract: $([math]::Round($extractDuration, 2))s | venv: $([math]::Round($venvDuration, 2))s | Migration: $([math]::Round($migrationDuration, 2))s | Cutover: $([math]::Round($cutoverDuration, 2))s" -ForegroundColor Gray
-        Write-Host "  Total: $([math]::Round($totalDuration, 2))s | Downtime: $([math]::Round($cutoverDuration, 2))s" -ForegroundColor Gray
-
-    } else {
-        Write-Warning "Failed to start deployment tracking"
-    }
-} catch {
-    Write-Warning "Failed to record deployment metrics: $_"
-    Write-Host "Deployment succeeded but metrics recording failed" -ForegroundColor Yellow
-}
-
-# Also record in legacy table for backward compatibility
-$legacyRecordScript = @"
-import sys
-import os
-sys.path.insert(0, r'$currentJunction\src')
-os.environ['DATABASE_PATH'] = r'$dbPath'
 from db import record_deployment
 record_deployment('$version', 'azure-arc', 'Deployed via Azure Arc run-command')
+print('Deployment recorded successfully')
 "@
 
 try {
-    $legacyRecordScript | & $venvPython -c "exec(input())" | Out-Null
+    $recordOutput = $recordScript | & $venvPython -c "exec(input())" 2>&1
+    Write-Host "  Database record: $recordOutput" -ForegroundColor Green
+    Write-DeploymentLog "  Database output: $recordOutput" "SUCCESS"
 } catch {
-    # Ignore legacy table errors
+    Write-Warning "Failed to record deployment: $_"
+    Write-DeploymentLog "Failed to record deployment: $_ | Output: $recordOutput" "ERROR"
 }
+
+# Log deployment statistics to file
+Write-DeploymentLog "`n=== Deployment Statistics ===" "INFO"
+Write-DeploymentLog "  Version: $version" "INFO"
+Write-DeploymentLog "  Hostname: $hostname" "INFO"
+Write-DeploymentLog "  OS: $osVersion" "INFO"
+Write-DeploymentLog "  Python: $pythonVersionFull" "INFO"
+Write-DeploymentLog "  Extract Duration: $([math]::Round($extractDuration, 2))s" "INFO"
+Write-DeploymentLog "  venv Rebuild Duration: $([math]::Round($venvDuration, 2))s" "INFO"
+Write-DeploymentLog "  Migration Duration: $([math]::Round($migrationDuration, 2))s" "INFO"
+Write-DeploymentLog "  Cutover Duration (Downtime): $([math]::Round($cutoverDuration, 2))s" "INFO"
+Write-DeploymentLog "  Total Duration: $([math]::Round($totalDuration, 2))s" "INFO"
+
+# Show metrics summary
+Write-Host "`nDeployment Metrics Summary:" -ForegroundColor Cyan
+Write-Host "  Extract: $([math]::Round($extractDuration, 2))s | venv: $([math]::Round($venvDuration, 2))s | Migration: $([math]::Round($migrationDuration, 2))s | Cutover: $([math]::Round($cutoverDuration, 2))s" -ForegroundColor Gray
+Write-Host "  Total: $([math]::Round($totalDuration, 2))s | Downtime: $([math]::Round($cutoverDuration, 2))s" -ForegroundColor Gray
 
 # Step 9: Cleanup old versions (keep last 3)
 Write-Host "`nStep 9: Cleaning up old versions..." -ForegroundColor Yellow

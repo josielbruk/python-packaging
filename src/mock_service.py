@@ -39,14 +39,15 @@ class HealthHandler(BaseHTTPRequestHandler):
                 'status': 'healthy',
                 'service': 'DicomGatewayMock',
                 'version': VERSION,
-                'python_version': sys.version.split()[0]
+                'python_version': sys.version.split()[0],
+                'timestamp': datetime.now().isoformat()
             }
 
-            # Add deployment history from database (legacy table)
+            # Add simple deployment history from database
             try:
-                from .db import get_deployment_history, get_deployment_metrics, get_deployment_statistics
+                from .db import get_deployment_history
 
-                deployments = get_deployment_history(limit=5)
+                deployments = get_deployment_history(limit=10)
                 response['deployment_history'] = [
                     {
                         'version': d['version'],
@@ -57,42 +58,6 @@ class HealthHandler(BaseHTTPRequestHandler):
                     for d in deployments
                 ]
                 response['current_deployment'] = response['deployment_history'][0] if response['deployment_history'] else None
-
-                # Add enhanced deployment metrics
-                metrics = get_deployment_metrics(limit=5)
-                response['deployment_metrics'] = [
-                    {
-                        'version': m['version'],
-                        'previous_version': m['previous_version'],
-                        'hostname': m['hostname'],
-                        'deployment_started_at': m['deployment_started_at'],
-                        'deployment_completed_at': m['deployment_completed_at'],
-                        'total_duration': m['total_duration'],
-                        'downtime_duration': m['downtime_duration'],
-                        'extract_duration': m['extract_duration'],
-                        'venv_rebuild_duration': m['venv_rebuild_duration'],
-                        'migration_duration': m['migration_duration'],
-                        'cutover_duration': m['cutover_duration'],
-                        'health_check_success': bool(m['health_check_success']),
-                        'time_to_healthy': m['time_to_healthy'],
-                        'status': m['deployment_status']
-                    }
-                    for m in metrics
-                ]
-
-                # Add deployment statistics
-                stats = get_deployment_statistics()
-                if stats:
-                    response['deployment_statistics'] = {
-                        'total_deployments': stats['total_deployments'],
-                        'successful_deployments': stats['successful_deployments'],
-                        'failed_deployments': stats['failed_deployments'],
-                        'avg_duration': round(stats['avg_duration'], 2) if stats['avg_duration'] else None,
-                        'avg_downtime': round(stats['avg_downtime'], 2) if stats['avg_downtime'] else None,
-                        'min_duration': round(stats['min_duration'], 2) if stats['min_duration'] else None,
-                        'max_duration': round(stats['max_duration'], 2) if stats['max_duration'] else None,
-                        'avg_health_check_time': round(stats['avg_health_check_time'], 2) if stats['avg_health_check_time'] else None
-                    }
             except Exception as e:
                 response['deployment_history_error'] = str(e)
 
