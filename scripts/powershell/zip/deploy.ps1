@@ -369,10 +369,13 @@ Write-Host "========================================" -ForegroundColor Green
 # Step 8: Record deployment in database
 Write-Host "`nStep 8: Recording deployment..." -ForegroundColor Yellow
 
+$dbPath = Join-Path $BaseInstallPath "data\gateway.db"
 $venvPython = Join-Path $currentJunction ".venv\Scripts\python.exe"
 $recordScript = @"
 import sys
+import os
 sys.path.insert(0, r'$currentJunction\src')
+os.environ['DATABASE_PATH'] = r'$dbPath'
 from db import record_deployment
 record_deployment('$version', 'azure-arc', 'Deployed via Azure Arc run-command')
 print('Deployment recorded')
@@ -495,6 +498,18 @@ if ($existingService) {
     & $nssmExe set $ServiceName AppRotateBytes 10485760  # 10MB
 
     Write-Host "Service configuration updated" -ForegroundColor Green
+    
+    # Restart the service with updated configuration
+    Write-Host "Restarting service with new configuration..." -ForegroundColor Yellow
+    & $nssmExe start $ServiceName
+    Start-Sleep -Seconds 3
+    
+    $restartedService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    if ($restartedService -and $restartedService.Status -eq 'Running') {
+        Write-Host "Service restarted successfully" -ForegroundColor Green
+    } else {
+        Write-Warning "Service did not start after restart. Status: $($restartedService.Status)"
+    }
 } else {
     Write-Host "Creating new service..." -ForegroundColor Yellow
 

@@ -145,6 +145,9 @@ jobs:
           set SCRIPT_DIR=%~dp0
           cd /d "%SCRIPT_DIR%"
 
+          REM Set persistent database location
+          set DATABASE_PATH=C:\Apps\DicomGatewayMock\data\gateway.db
+
           REM Run the application using virtual environment Python
           "%SCRIPT_DIR%.venv\Scripts\python.exe" -m src
 
