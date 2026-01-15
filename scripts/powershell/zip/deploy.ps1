@@ -183,7 +183,7 @@ Write-DeploymentLog "STEP 3: Rebuilding virtual environment" "INFO"
 $venvStart = Get-Date
 
 $venvPath = Join-Path $versionDir ".venv"
-$requirementsFile = Join-Path $versionDir "src\requirements.txt"
+$pyprojectFile = Join-Path $versionDir "pyproject.toml"
 
 # Remove the build machine's virtual environment
 if (Test-Path $venvPath) {
@@ -279,8 +279,31 @@ if (-not $pythonExe) {
 Write-Host "Found Python at: $pythonExe" -ForegroundColor Green
 Write-DeploymentLog "  Found Python: $pythonExe" "INFO"
 
-# Create new virtual environment on target machine
-& $pythonExe -m venv $venvPath
+# Check if uv is installed
+$uvExe = $null
+$uvCommand = Get-Command uv.exe -ErrorAction SilentlyContinue
+if ($uvCommand) {
+    $uvExe = $uvCommand.Source
+    Write-Host "Found uv at: $uvExe" -ForegroundColor Green
+} else {
+    # Install uv if not found
+    Write-Host "uv not found, installing..." -ForegroundColor Yellow
+    & $pythonExe -m pip install uv --quiet
+    $uvExe = Join-Path (Split-Path $pythonExe) "Scripts\uv.exe"
+    
+    if (Test-Path $uvExe) {
+        Write-Host "uv installed successfully" -ForegroundColor Green
+    } else {
+        Write-Error "Failed to install uv"
+        exit 1
+    }
+}
+
+Write-DeploymentLog "  Found uv: $uvExe" "INFO"
+
+# Create new virtual environment on target machine using uv
+Write-Host "Creating virtual environment with uv..." -ForegroundColor Gray
+& $uvExe venv $venvPath --python $pythonExe
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Failed to create virtual environment"
     exit 1
@@ -288,10 +311,14 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Virtual environment created" -ForegroundColor Green
 
-# Install dependencies
+# Install dependencies from pyproject.toml using uv
+Write-Host "Installing dependencies from pyproject.toml..." -ForegroundColor Gray
 $venvPython = Join-Path $venvPath "Scripts\python.exe"
-& $venvPython -m pip install --upgrade pip --quiet
-& $venvPython -m pip install -r $requirementsFile --quiet
+& $uvExe pip install -e $versionDir
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to install dependencies"
+    exit 1
+}
 
 $venvEnd = Get-Date
 $phaseTimings['venv'] = ($venvEnd - $venvStart).TotalSeconds

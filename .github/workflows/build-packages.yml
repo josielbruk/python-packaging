@@ -91,9 +91,9 @@ jobs:
           Write-Host "Creating portable virtual environment..."
           uv venv .venv --python ${{ steps.get_python_version.outputs.python_version }}
 
-          Write-Host "Installing dependencies..."
+          Write-Host "Installing dependencies from pyproject.toml..."
           .\.venv\Scripts\Activate.ps1
-          uv pip install -r src\requirements.txt
+          uv pip install -e .
 
           Write-Host "Virtual environment created successfully"
 
@@ -172,154 +172,158 @@ jobs:
   # ============================================
   # Job 2: Build MSI Package (Comparison)
   # ============================================
-  build-msi:
-    name: Build MSI Package
-    runs-on: windows-latest
+  # COMMENTED OUT - Only building ZIP for now
+  # build-msi:
+  #   name: Build MSI Package
+  #   runs-on: windows-latest
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Extract Python version from pyproject.toml
+  #       id: get_python_version
+  #       shell: pwsh
+  #       run: |
+  #         $content = Get-Content pyproject.toml -Raw
+  #         if ($content -match 'requires-python\s*=\s*">=([0-9.]+)') {
+  #           $version = $matches[1]
+  #           Write-Host "Extracted Python version: $version"
+  #           echo "python_version=$version" >> $env:GITHUB_OUTPUT
+  #         } else {
+  #           Write-Host "Could not find Python version, using default 3.12"
+  #           echo "python_version=3.12" >> $env:GITHUB_OUTPUT
+  #         }
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Extract Python version from pyproject.toml
-        id: get_python_version
-        shell: pwsh
-        run: |
-          $content = Get-Content pyproject.toml -Raw
-          if ($content -match 'requires-python\s*=\s*">=([0-9.]+)') {
-            $version = $matches[1]
-            Write-Host "Extracted Python version: $version"
-            echo "python_version=$version" >> $env:GITHUB_OUTPUT
-          } else {
-            Write-Host "Could not find Python version, using default 3.12"
-            echo "python_version=3.12" >> $env:GITHUB_OUTPUT
-          }
-
-      - name: Get version from tag, input, or commit
-        id: get_version
-        shell: pwsh
-        run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ github.event.inputs.version }}" -ne "") {
-            # Use manual input version
-            $version = "${{ github.event.inputs.version }}"
-          } elseif ("${{ github.ref_type }}" -eq "tag") {
-            # Use tag version (strip 'v' prefix)
-            $version = "${{ github.ref_name }}" -replace '^v', ''
-          } else {
-            # Use short commit SHA
-            $version = "${{ github.sha }}".Substring(0, 7)
-          }
-          echo "version=$version" >> $env:GITHUB_OUTPUT
-          echo "Version: $version"
-
-      - name: Install WiX Toolset
-        shell: pwsh
-        run: |
-          Write-Host "Downloading WiX Toolset..."
-          $wixUrl = "https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip"
-          $wixZip = "wix-binaries.zip"
-          $wixDir = "$env:TEMP\wix"
-
-          Invoke-WebRequest -Uri $wixUrl -OutFile $wixZip
-          Expand-Archive -Path $wixZip -DestinationPath $wixDir -Force
-
-          # Add to PATH
-          $env:PATH = "$wixDir;$env:PATH"
-          echo "$wixDir" >> $env:GITHUB_PATH
-
-          # Verify installation
-          & "$wixDir\candle.exe" -?
-          Write-Host "WiX Toolset installed successfully"
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ steps.get_python_version.outputs.python_version }}
-
-      - name: Build MSI
-        shell: pwsh
-        working-directory: scripts/powershell/msi
-        run: |
-          $version = "${{ steps.get_version.outputs.version }}"
-          Write-Host "Building MSI package version $version..."
-
-          .\build.ps1 -Version $version -OutputDir ".\output"
-
-      - name: Upload MSI artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: msi-package
-          path: scripts/powershell/msi/output/*.msi
-          retention-days: 90
+  #     - name: Get version from tag, input, or commit
+  #       id: get_version
+  #       shell: pwsh
+  #       run: |
+  #         if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ github.event.inputs.version }}" -ne "") {
+  #           # Use manual input version
+  #           $version = "${{ github.event.inputs.version }}"
+  #         } elseif ("${{ github.ref_type }}" -eq "tag") {
+  #           # Use tag version (strip 'v' prefix)
+  #           $version = "${{ github.ref_name }}" -replace '^v', ''
+  #         } else {
+  #           # Use short commit SHA
+  #           $version = "${{ github.sha }}".Substring(0, 7)
+  #         }
+  #         echo "version=$version" >> $env:GITHUB_OUTPUT
+  #         echo "Version: $version"
+  #
+  #     - name: Install WiX Toolset
+  #       shell: pwsh
+  #       run: |
+  #         Write-Host "Downloading WiX Toolset..."
+  #         $wixUrl = "https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip"
+  #         $wixZip = "wix-binaries.zip"
+  #         $wixDir = "$env:TEMP\wix"
+  #
+  #         Invoke-WebRequest -Uri $wixUrl -OutFile $wixZip
+  #         Expand-Archive -Path $wixZip -DestinationPath $wixDir -Force
+  #
+  #         # Add to PATH
+  #         $env:PATH = "$wixDir;$env:PATH"
+  #         echo "$wixDir" >> $env:GITHUB_PATH
+  #
+  #         # Verify installation
+  #         & "$wixDir\candle.exe" -?
+  #         Write-Host "WiX Toolset installed successfully"
+  #
+  #     - name: Set up Python
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: ${{ steps.get_python_version.outputs.python_version }}
+  #
+  #     - name: Build MSI
+  #       shell: pwsh
+  #       working-directory: scripts/powershell/msi
+  #       run: |
+  #         $version = "${{ steps.get_version.outputs.version }}"
+  #         Write-Host "Building MSI package version $version..."
+  #
+  #         .\build.ps1 -Version $version -OutputDir ".\output"
+  #
+  #     - name: Upload MSI artifact
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: msi-package
+  #         path: scripts/powershell/msi/output/*.msi
+  #         retention-days: 90
 
   # ============================================
   # Job 3: Build EXE Package (Comparison)
   # ============================================
-  build-exe:
-    name: Build EXE Package
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Extract Python version from pyproject.toml
-        id: get_python_version
-        shell: pwsh
-        run: |
-          $content = Get-Content pyproject.toml -Raw
-          if ($content -match 'requires-python\s*=\s*">=([0-9.]+)') {
-            $version = $matches[1]
-            Write-Host "Extracted Python version: $version"
-            echo "python_version=$version" >> $env:GITHUB_OUTPUT
-          } else {
-            Write-Host "Could not find Python version, using default 3.12"
-            echo "python_version=3.12" >> $env:GITHUB_OUTPUT
-          }
-
-      - name: Get version from tag, input, or commit
-        id: get_version
-        shell: pwsh
-        run: |
-          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ github.event.inputs.version }}" -ne "") {
-            # Use manual input version
-            $version = "${{ github.event.inputs.version }}"
-          } elseif ("${{ github.ref_type }}" -eq "tag") {
-            # Use tag version (strip 'v' prefix)
-            $version = "${{ github.ref_name }}" -replace '^v', ''
-          } else {
-            # Use short commit SHA
-            $version = "${{ github.sha }}".Substring(0, 7)
-          }
-          echo "version=$version" >> $env:GITHUB_OUTPUT
-          echo "Version: $version"
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ steps.get_python_version.outputs.python_version }}
-
-      - name: Install PyInstaller
-        shell: pwsh
-        run: |
-          Write-Host "Installing PyInstaller..."
-          pip install pyinstaller
-          pyinstaller --version
-
-      - name: Build EXE
-        shell: pwsh
-        working-directory: scripts/powershell/exe
-        run: |
-          $version = "${{ steps.get_version.outputs.version }}"
-          Write-Host "Building EXE package version $version..."
-
-          .\build.ps1 -Version $version -OutputDir ".\dist"
-
-      - name: Upload EXE artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: exe-package
-          path: scripts/powershell/exe/dist/*.exe
-          retention-days: 90
+  # Job 3: Build EXE Package (Comparison)
+  # ============================================
+  # COMMENTED OUT - Only building ZIP for now
+  # build-exe:
+  #   name: Build EXE Package
+  #   runs-on: windows-latest
+  #
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Extract Python version from pyproject.toml
+  #       id: get_python_version
+  #       shell: pwsh
+  #       run: |
+  #         $content = Get-Content pyproject.toml -Raw
+  #         if ($content -match 'requires-python\s*=\s*">=([0-9.]+)') {
+  #           $version = $matches[1]
+  #           Write-Host "Extracted Python version: $version"
+  #           echo "python_version=$version" >> $env:GITHUB_OUTPUT
+  #         } else {
+  #           Write-Host "Could not find Python version, using default 3.12"
+  #           echo "python_version=3.12" >> $env:GITHUB_OUTPUT
+  #         }
+  #
+  #     - name: Get version from tag, input, or commit
+  #       id: get_version
+  #       shell: pwsh
+  #       run: |
+  #         if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ github.event.inputs.version }}" -ne "") {
+  #           # Use manual input version
+  #           $version = "${{ github.event.inputs.version }}"
+  #         } elseif ("${{ github.ref_type }}" -eq "tag") {
+  #           # Use tag version (strip 'v' prefix)
+  #           $version = "${{ github.ref_name }}" -replace '^v', ''
+  #         } else {
+  #           # Use short commit SHA
+  #           $version = "${{ github.sha }}".Substring(0, 7)
+  #         }
+  #         echo "version=$version" >> $env:GITHUB_OUTPUT
+  #         echo "Version: $version"
+  #
+  #     - name: Set up Python
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: ${{ steps.get_python_version.outputs.python_version }}
+  #
+  #     - name: Install PyInstaller
+  #       shell: pwsh
+  #       run: |
+  #         Write-Host "Installing PyInstaller..."
+  #         pip install pyinstaller
+  #         pyinstaller --version
+  #
+  #     - name: Build EXE
+  #       shell: pwsh
+  #       working-directory: scripts/powershell/exe
+  #       run: |
+  #         $version = "${{ steps.get_version.outputs.version }}"
+  #         Write-Host "Building EXE package version $version..."
+  #
+  #         .\build.ps1 -Version $version -OutputDir ".\dist"
+  #
+  #     - name: Upload EXE artifact
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: exe-package
+  #         path: scripts/powershell/exe/dist/*.exe
+  #         retention-days: 90
 
   # ============================================
   # Job 4: Create GitHub Release
@@ -327,7 +331,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-zip, build-msi, build-exe]
+    needs: [build-zip] # Removed build-msi, build-exe dependencies
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_to_github == 'true')
     permissions:
       contents: write
@@ -358,9 +362,9 @@ jobs:
 
             ### 📦 Packages Included
 
-            - **ZIP Package (Recommended)**: Blue/Green deployment with directory junctions
-            - **MSI Package**: Traditional Windows Installer (for comparison)
-            - **EXE Package**: Single-file executable via PyInstaller (for comparison)
+            - **ZIP Package**: Blue/Green deployment with directory junctions
+            
+            _Note: MSI and EXE packages are currently disabled. Only ZIP package is being built._
 
             ### 🚀 Deployment
 
@@ -394,8 +398,8 @@ jobs:
             Co-Authored-By: GitHub Actions <noreply@github.com>
           files: |
             artifacts/zip-package/*
-            artifacts/msi-package/*
-            artifacts/exe-package/*
+            # artifacts/msi-package/*
+            # artifacts/exe-package/*
 
   # ============================================
   # Job 5: Publish to GitHub Packages (Optional)
