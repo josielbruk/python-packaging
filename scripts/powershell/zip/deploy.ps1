@@ -314,7 +314,7 @@ Write-Host "Virtual environment created" -ForegroundColor Green
 # Install dependencies from pyproject.toml using uv
 Write-Host "Installing dependencies from pyproject.toml..." -ForegroundColor Gray
 $venvPython = Join-Path $venvPath "Scripts\python.exe"
-& $uvExe pip install -e $versionDir
+& $uvExe pip install --python $venvPython -e $versionDir
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Failed to install dependencies"
     exit 1
