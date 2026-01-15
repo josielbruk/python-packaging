@@ -373,15 +373,16 @@ if ($nssmCommand) {
 }
 
 if ($nssmExe) {
-    $startScript = Join-Path $currentJunction "start-service.bat"
+    # Use $versionDir (the new version path) instead of $currentJunction (which doesn't exist yet)
+    $startScript = Join-Path $versionDir "start-service.bat"
     $logFile = Join-Path $BaseInstallPath "logs\$ServiceName-$(Get-Date -Format 'yyyy-MM-dd').log"
     $errorLogFile = Join-Path $BaseInstallPath "logs\$ServiceName-error-$(Get-Date -Format 'yyyy-MM-dd').log"
 
     # Update NSSM config while service is still running (changes take effect on next start)
-    & $nssmExe set $ServiceName Application $startScript 2>&1 | Out-Null
-    & $nssmExe set $ServiceName AppDirectory $currentJunction 2>&1 | Out-Null
-    & $nssmExe set $ServiceName AppStdout $logFile 2>&1 | Out-Null
-    & $nssmExe set $ServiceName AppStderr $errorLogFile 2>&1 | Out-Null
+    & $nssmExe set $ServiceName Application $startScript
+    & $nssmExe set $ServiceName AppDirectory $versionDir
+    & $nssmExe set $ServiceName AppStdout $logFile
+    & $nssmExe set $ServiceName AppStderr $errorLogFile
 
     Write-Host "Service configuration updated" -ForegroundColor Green
     Write-DeploymentLog "  NSSM configuration updated (takes effect on restart)" "SUCCESS"
