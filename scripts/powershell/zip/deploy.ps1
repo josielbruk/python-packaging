@@ -596,15 +596,40 @@ $versions = Get-ChildItem -Path $releasesDir -Directory | Sort-Object CreationTi
 if ($versions.Count -gt 3) {
     $versionsToDelete = $versions | Select-Object -Skip 3
 
-    foreach ($versionDir in $versionsToDelete) {
-        # Only delete if it's not currently in use
-        $currentTarget = (Get-Item $currentJunction).Target[0]
-        $previousTarget = if (Test-Path $previousJunction) { (Get-Item $previousJunction).Target[0] } else { $null }
+    # Get normalized paths of junctions (resolve to absolute paths)
+    $currentTarget = $null
+    $previousTarget = $null
+    
+    if (Test-Path $currentJunction) {
+        $currentTarget = (Get-Item $currentJunction).Target
+        if ($currentTarget -is [array]) { $currentTarget = $currentTarget[0] }
+        # Normalize to full path for comparison
+        if ($currentTarget) {
+            $currentTarget = [System.IO.Path]::GetFullPath($currentTarget)
+        }
+    }
+    
+    if (Test-Path $previousJunction) {
+        $previousTarget = (Get-Item $previousJunction).Target
+        if ($previousTarget -is [array]) { $previousTarget = $previousTarget[0] }
+        # Normalize to full path for comparison
+        if ($previousTarget) {
+            $previousTarget = [System.IO.Path]::GetFullPath($previousTarget)
+        }
+    }
 
-        if ($versionDir.FullName -ne $currentTarget -and $versionDir.FullName -ne $previousTarget) {
+    foreach ($versionDir in $versionsToDelete) {
+        # Normalize version directory path for comparison
+        $normalizedVersionPath = [System.IO.Path]::GetFullPath($versionDir.FullName)
+        
+        # Only delete if it's not currently in use
+        if ($normalizedVersionPath -ne $currentTarget -and $normalizedVersionPath -ne $previousTarget) {
             Write-Host "  Removing old version: $($versionDir.Name)" -ForegroundColor Gray
             Write-DeploymentLog "  Removing old version: $($versionDir.Name)" "INFO"
             Remove-Item -Path $versionDir.FullName -Recurse -Force
+        } else {
+            Write-Host "  Skipping version in use: $($versionDir.Name)" -ForegroundColor Yellow
+            Write-DeploymentLog "  Skipping version in use: $($versionDir.Name)" "INFO"
         }
     }
 
