@@ -290,7 +290,7 @@ if ($uvCommand) {
     Write-Host "uv not found, installing..." -ForegroundColor Yellow
     & $pythonExe -m pip install uv --quiet
     $uvExe = Join-Path (Split-Path $pythonExe) "Scripts\uv.exe"
-    
+
     if (Test-Path $uvExe) {
         Write-Host "uv installed successfully" -ForegroundColor Green
     } else {

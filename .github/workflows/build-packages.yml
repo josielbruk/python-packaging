@@ -363,7 +363,7 @@ jobs:
             ### 📦 Packages Included
 
             - **ZIP Package**: Blue/Green deployment with directory junctions
-            
+
             _Note: MSI and EXE packages are currently disabled. Only ZIP package is being built._
 
             ### 🚀 Deployment
